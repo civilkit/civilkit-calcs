@@ -73,6 +73,7 @@ import { mountSuiteBar } from './suitebar';
 import { initLanguage, onLanguageChanged, td } from './i18n';
 import { InputDock, dockHideStyle, dockInputsFromHtml, type DockInput } from './input-dock';
 import { parseInputs } from './embed/inputs';
+import { registerUiCompletions } from './editor/ui-completions';
 import { setPanelHooks } from './wasm/python-panels';
 import { mountLanguagePrompt } from './i18n/prompt';
 import './styles/civilkit-tokens.css';
@@ -1469,6 +1470,7 @@ async function bootstrap(): Promise<void> {
     // ---- Global (per-language) Monaco providers ----
     registerSemanticTokensProvider(activeBridge.api, getFileContext);
     registerCompletionProvider(editorBridge);
+    registerUiCompletions();
     if (tauriBridge) {
         registerIncludeCompletionProvider({
             listDirectory: (p) => tauriBridge.listDirectory(p),

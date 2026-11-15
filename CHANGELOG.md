@@ -12,7 +12,19 @@ under "Crates" at the end, on plain 0.x semver, and are tagged `<crate-name>-v<v
 ## [Unreleased]
 
 ### Added
-- **Manipulate for Python panels** - `@ui.manipulate(("L", 2, 12, 6, 0.5, "m"), ("mode", ["a", "b"]), ("grid", True))` makes the controls from tuples and turns the function below it into a panel, in the manner of Mathematica's Manipulate; `ui.plot(x, y, ...)` draws the line chart in one call and `ylim=` keeps its axes still while a control moves. A new sample in the Panels group, Free vibration with ui.manipulate, and a section in the interactive panels chapter of the guide show it.
+- **Manipulate for Python panels** - `@ui.manipulate(("L", 2, 12, 6, 0.5, "m"), ("mode", ["a", "b"]), ("grid", True))` makes the controls from tuples and turns the function below it into a panel, in the manner of Mathematica's Manipulate; `ui.plot(x, y, ...)` draws the line chart in one call and `ylim=` keeps its axes still while a control moves. A sample in the Panels group, Free vibration with ui.manipulate, and a section in the interactive panels chapter of the guide show it.
+- **Number boxes and buttons in panels** - `ui.number(...)` is a box to type a number in (applied on Enter or when the box is left, kept between its limits) and `ui.button(...)` a button whose function receives the number of presses, so each press is a new value.
+- **Markdown, rows and tabs in panels** - A panel function can return `ui.markdown(text)` (headings, bold, italic, code and lists; HTML in it is shown as text), and lay results out with `ui.row`, `ui.column` and `ui.tabs`. The chosen tab survives an update, the arrow keys move between tabs, and print and Word show every tab under its name.
+- **Reset, and one control in two panels** - Every panel has a Reset button, and a widget given to more than one panel is one control: moving it in either moves the other and both panels run again. `plotly=True` loads Plotly for a panel whose first result is not a chart, and `ui.check_panels()` tells you whether a panel gives the same answer twice.
+- **Panel values are saved with the file** - Save values in the Input view writes the values the panels were left at into the file, and a reopened file starts every panel there.
+- **Sliders tied to sheet inputs** - `ui.input("L", 6)` starts a panel from the sheet's own input L, and a slider made with `sheet=True` writes its value into that input when you let go, so the lines under the panel recalculate once while the chart follows the drag.
+- **Charts from panels print and export as pictures** - The chart of a panel is carried into Print PDF, Word and Excel as a picture of what was drawn, as a Plotly chart from `fig.show()` already was.
+- **Completion for `ui.` in a Python block** - Typing `ui.` in a Python block lists the controls, layouts and helpers with their signatures and a line of help.
+- **Four more panel samples** - Beam diagrams with tabs, number boxes and Markdown; a panel slider tied to a sheet input; two panels sharing one slider; and free vibration with ui.manipulate, all in the Panels group of Samples.
+
+### Changed
+- **Panels send less** - A result that did not change after a move (a table or a note beside the chart) is not sent or drawn again.
+- **A slow panel stops a player** - An update that takes longer than 1.5 seconds is reported under the panel and stops a player, so a slow frame does not run away from you.
 
 ## [26.11.1] - 2026-11-06
 

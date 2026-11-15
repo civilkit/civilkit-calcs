@@ -164,9 +164,14 @@ def beam(L):
     return "span %g m" % L
 ```
 
-The design, the semantics (state, time limits, exports, saved values), the security model and the three example sheets are in
-[interactive-panels-design.md](interactive-panels-design.md). Print, Word and Excel carry the panel's first output and a note with the
-values it was left at, not the widgets.
+Beyond sliders, a panel has number boxes (`ui.number`), buttons (`ui.button`, the function receives the press count), `ui.markdown`, the
+layouts `ui.row`, `ui.column` and `ui.tabs`, a Reset button, widgets shared by several panels, `ui.plot` for a line chart and
+`@ui.manipulate` for the short form. Its values are saved with the file (Save values in the Input view), `ui.input("L")` reads a sheet
+input and `sheet=True` writes one. The guide chapter [Interactive panels](../book/src/python-panels.md) has each of them with an example.
+
+The design, the semantics (state, time limits, exports, saved values), the security model and the example sheets are in
+[interactive-panels-design.md](interactive-panels-design.md). Print, Word and Excel carry the panel's first output (charts as pictures)
+and a note with the values it was left at, not the widgets.
 
 ### Python results driving a chart written in JavaScript (raw)
 

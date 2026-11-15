@@ -1,9 +1,11 @@
 # Interactive panels: design and prototype
 
-Status: the vertical slice (phase 0) shipped in 26.10.18, with a guide chapter and three sample sheets. `ui.manipulate` and `ui.plot`
-(the short form, in the manner of Mathematica's Manipulate) came after it. Sections marked **Prototype** describe what is built and
-checked (`web/e2e/panels-check.mjs`); everything else is proposed. It is opt-in by the import, needs no flag, and changes nothing
-for a worksheet that does not use it.
+Status: the vertical slice (phase 0) shipped in 26.10.18. Phases 1 to 3 and `ui.manipulate` / `ui.plot` (the short form, in the manner of
+Mathematica's Manipulate) shipped in 26.11.2: number boxes, buttons, Markdown, row/column/tabs, Reset, a widget shared by panels,
+`plotly=True`, unchanged results not sent again, a slow-frame stop, values saved with the file, sliders tied to sheet inputs, chart
+pictures for export, `ui` completions in the editor. What is built is checked by `web/e2e/panels-check.mjs`; the sections that say
+**Proposed** or **Not built** are not. The whole thing is opt-in by the import, needs no flag, and changes nothing for a worksheet
+that does not use it.
 
 Two requests ask for this: interactive, code-controlled panels, and animation of a code cell's output. They are one feature: a
 widget changes a value, Python runs again for the part that depends on it, and a chart, table or text is redrawn in place. An
@@ -67,10 +69,13 @@ def beam(L, mat, ribs):
   tuples and decorates the function as a panel. The controls are an ordered list of tuples, not keyword arguments, because this
   runtime does not promise keyword (or dict) order. `ui.plot(x, y1, y2, ..., names=, xlabel=, ylabel=, xlim=, ylim=)` returns a line
   chart so the common case needs no Plotly code.
-* **Proposed, not built:** `ui.row(...)`, `ui.column(...)`, `ui.tabs(("Moment", fig1), ("Shear", fig2))` as return values;
-  `ui.button("Recalculate")` (an event, not a value); `ui.markdown(s)`; `ui.number(...)` (a typed-in box); `ui.bind(widget, fn)` to
-  share one widget between panels; `ui.panel(..., plotly=True)` to load Plotly for a panel whose first result is not a chart;
-  `ui.bind_input("L", L)` for the two-way link with a sheet `?` input (below).
+* **Built in 26.11.2:** `ui.number(name, default, lo, hi, step, unit, label, sheet)` (a typed-in box, applied on Enter or blur);
+  `ui.button(name, label)` (the function receives the count of presses: an event made into a value, so it fits the same
+  one-call-per-change loop); `ui.markdown(s)`; `ui.row`, `ui.column`, `ui.tabs((label, content), ...)` as return values;
+  `ui.panel(..., plotly=True)`; `ui.input(name, default)` and `sheet=True` for the link with a sheet `?` input (below);
+  `ui.check_panels()`. A widget object given to more than one panel is one control (identity, through a `wid` in the spec), which
+  makes a separate `ui.bind(widget, fn)` unnecessary: it was not built.
+* **Not built:** `ui.bind` (see above); a bundled copy of Plotly for offline charts (3.6 MB: a policy decision, still open).
 
 ## Semantics
 
@@ -83,8 +88,8 @@ for the beam sample with a 61-point chart.)
 **State.** The interpreter and the block's globals stay alive after the last block, so the function can read everything the block
 computed (a stiffness matrix, a solved model) without recomputing it. That is the point: heavy setup stays outside the function.
 It is also a hazard. A function that changes globals gives answers that depend on the order of the user's moves. Rule: a panel function
-is a pure function of its arguments and of values the block computed before it. Proposed dev check: in a "check panels" action, call
-each function twice with the same values and compare the output; say so when they differ.
+is a pure function of its arguments and of values the block computed before it. The dev check is built: `ui.check_panels()` calls each
+function twice with its starting values and compares the output (it can only see a change that shows in the output of the second call).
 
 **Determinism and replay.** The starting values of every panel are part of the run's key. A recalculation (an edit, a theme change, an
 export) starts a fresh interpreter seeded with the values the panels were last moved to, so the sheet comes back as it was left and
@@ -120,22 +125,22 @@ and export show it at these values." The values are the ones the panel was left 
 from them (**Prototype**, tested for Report, Word and Excel). The widget container is empty in the HTML, so nothing but the
 note and the output reaches a document.
 
-## Two-way binding with sheet `?` inputs (phase 3)
+## Two-way binding with sheet `?` inputs (built in 26.11.2)
 
 Two directions, with different costs.
 
-* **Sheet to panel.** A panel needs a sheet input's value in Python. Python cannot read Calcpad variables today, and blocks run before the
-  engine. Cheapest correct route: `uiOverrides` already holds the entered value of every `?` input; hand the ones a block names
-  (`ui.input("L")`) to the interpreter as its seed, the same way panel values are seeded now. A change of that input already
-  re-converts the sheet (and therefore re-runs Python from the new seed). No engine change. Limit: only the entered value, not a
-  value computed by the engine from other lines.
-* **Panel to sheet.** A slider that is the input: `L = ui.slider("L", ..., sheet=True)` writes the value into `uiOverrides` and
-  re-converts the sheet **on release** (not during a drag), so the lines below the block recalculate. During a drag the panel
-  updates locally (fast path); on release the sheet catches up (slow path, one conversion). The result is one control that moves the
-  chart live and the whole report once. `export()` inside a panel function is refused: a value that changes per frame cannot be a
-  definition. The sheet's own result lines are the place to show an exported number.
+* **Sheet to panel** (`ui.input("L", default)`). The host hands the interpreter the numbers of the sheet's `?` inputs in the seed
+  (`"@inputs"`): the entered value (the `uiOverrides` entry whose key starts `L:`), else the default written in the line, read from the
+  compiled sheet text before the run (`panelPrepare`). The seed is part of the run's cache key, so a change of an input runs the block
+  again from the new value. Only plain number inputs, only the entered value, not a value the engine computed from other lines.
+* **Panel to sheet** (`sheet=True` on `ui.slider` or `ui.number`). During a drag the panel updates locally (the fast path). When the
+  control is released (`change`) the frame posts `panelSheet`; the host checks its shape and the run, finds the input's control key
+  (`uiControls`, or the docked inputs), writes `uiOverrides`, writes the source when "keep form values in the source" is on, and
+  converts the sheet once. The Input view applies entered values, the Preview does not (unless its setting says so), so the sheet's lines
+  follow in Input view. `export()` inside a panel function is refused: a value that changes per frame cannot be a definition.
 
-Both need one engine-side fact to be stated, not built: a `?` input's `uiOverrides` key (`L:1`) must be mapped to a name; the sheet compiler already knows the name of each input.
+The widget's name must be the input's name. Tested in `panels-check.mjs`: the slider starts from the sheet input, a drag converts nothing,
+the release writes the value into the input and converts once.
 
 ## Security model
 
@@ -197,21 +202,21 @@ What it **proves**: the main risk, a live re-run of a Python function from a wid
 here) and safe under the existing model; state, consent, the time limit and exports compose with it; the seed carries the state across
 recalculations and into exports.
 
-What it **does not prove or build**: layouts (`row`, `column`, `tabs`), buttons, shared widgets, saving values in the file, the
-two-way link with sheet inputs, a static picture of a chart for export, `restyle`-only updates, soft time limits, Plotly offline,
-other browsers than Chromium, a long soak (memory over thousands of updates), real phones (a 390 px emulation was used).
+(That was the state of phase 0; the table below says what 26.11.2 added.)
 
 ## Phased plan
 
-| Phase | Content | Estimate | Main risks |
-|---|---|---|---|
-| 0 (done here) | Slice above. | done | none open |
-| 1 | Harden and ship `ui`: soft time limit and "slow frame" stop for players, `ui.number`, `ui.button`, `ui.markdown`, `ui.row`/`column`/`tabs`, docs in the user guide, samples, an editor completion list for `ui`, a Chromium-plus-WebKit e2e run. | 4 to 6 days | Layout inside the frame at narrow widths; tabs and Plotly resize. |
-| 2 | Persistence in `uiOverrides` (`panel:NAME:WIDGET`, hide from the "unused value" list), a static chart image for export (draw the figure with the existing SVG figure code for the common trace types, or `Plotly.toImage` captured once at export), `plotly=True` hint, purity check, panel reset button. | 4 to 5 days | Export needs the frame's picture: Word and Excel run in the host, not in a frame; the SVG route avoids the dependency but covers fewer trace types. |
-| 3 | Two-way binding with sheet `?` inputs (`sheet=True`, `ui.input`), shared widgets (`ui.bind`), `restyle`-only updates, optional bundled Plotly for offline. | 6 to 8 days | Mapping `?` inputs to names; a re-conversion on release must not flash the frame (the page already keeps two stacked frames); consent and cache keys with more inputs. |
-| 4 | Animation extras: record a player to an animated image or video for export, a "cache frames" mode that precomputes all frames in one call and plays them with Plotly frames (no round trip). | 3 to 5 days | Memory for many frames; export size. |
+| Phase | Content | Status |
+|---|---|---|
+| 0 | The vertical slice. | shipped in 26.10.18 |
+| 1 | Soft time limit and "slow frame" stop for players (1.5 s, `SLOW_MS`), `ui.number`, `ui.button`, `ui.markdown` (written by the host from escaped text), `ui.row`/`column`/`tabs`, guide chapter, samples, an editor completion list for `ui` (`editor/ui-completions.ts`), a Chromium and WebKit e2e run | shipped in 26.11.2 (WebKit: see Unverified) |
+| 2 | Values kept in `uiOverrides` (`panel:NAME:WIDGET`, hidden from the form rows, written by Save values, read back from the file's comment), chart pictures for print and export (the frame snapshots each chart it draws, under the key of the figure JSON the export recalculation will produce), `plotly=True`, `ui.check_panels()`, a Reset button | shipped in 26.11.2 |
+| 3 | `ui.input` and `sheet=True`, a widget shared by panels (identity, no `ui.bind`), unchanged results not sent again, bundled Plotly for offline | shipped in 26.11.2 except bundled Plotly (not built) |
+| 4 | Animation extras: record a player to an animated image or video for export, a "cache frames" mode with Plotly frames | not built (optional) |
 
-Total about 17 to 24 working days for phases 1 to 3; phase 4 is optional.
+Changed from the plan: `restyle`-only updates were replaced by item-level diffing. The interpreter keeps the last answer of each panel
+and, when the page says which answer it holds (`base`), sends `{"t":"same"}` for a result that did not change; Plotly's own `react`
+keeps zoom and camera (`uirevision`). A figure that changed is still sent whole.
 
 ## Risks
 
@@ -221,15 +226,17 @@ Total about 17 to 24 working days for phases 1 to 3; phase 4 is optional.
 3. **Plotly cost per frame.** Sending the whole figure per update is fine to a few thousand points; beyond that, `restyle` (phase 3).
 4. **Frame is replaced on every recalculation.** A live drag during a recalculation is answered "out of date" and the new frame
    comes seeded with the last values; verified for the edit case, not for a drag racing a conversion.
-5. **Export of charts.** Today a note, not a picture; users will ask for the picture.
+5. **Export of charts.** A picture, taken by the frame after each draw (about 600 ms later) and matched by the key of the figure JSON. If an
+   export is made before the picture exists, or the figure JSON differs on recalculation (a function that is not deterministic), the
+   note is carried instead.
 6. **Scope creep toward a dashboard tool.** The "will not do" list is the defence.
 
 ## Unverified
 
-Not tested: Firefox and Safari; a real touch device; memory growth over thousands of updates; two panels moved at the same
-time (the code keeps independent state per panel; only one panel is exercised by the tests); a worksheet with a panel in an
-`#include`d file (blocks there are not seen at all); the `Input` (form) view with panels (it uses the same conversion, only the
-Preview was exercised); behaviour when Plotly loads slowly after the first update (the code guards `typeof Plotly`).
+Not tested: Firefox; a real touch device; memory growth over thousands of updates; a worksheet with a panel in an `#include`d file (blocks
+there are not seen at all); behaviour when Plotly loads slowly after the first update (the code guards `typeof Plotly`); the sheet-input link
+with a loop or a repeated input (the first control with that name is used); `ui.input` for an input that is not a plain number (gives the
+default); two panels moved at the same instant beyond the shared-slider case in the checks.
 
 ## Examples
 

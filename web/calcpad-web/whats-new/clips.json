@@ -1,4 +1,30 @@
 {
+  "Unreleased": [
+    {
+      "id": "panel-controls-tabs",
+      "title": "Number boxes, a button, tabs and Markdown in a panel",
+      "blurb": "The beam diagrams panel. The Shear force tab is chosen and stays chosen while the Next load case button steps to the second load case (the button hands the function its press count). A span of 9 m is typed into a number box and applied with Enter, the summary above the tabs is Markdown, and Reset puts every control back.",
+      "recorder": "41-panel-controls-tabs"
+    },
+    {
+      "id": "panel-shared-reset",
+      "title": "Two panels, one slider",
+      "blurb": "Two panels are given the same slider. Dragging the span in the first panel moves it in the second, and the second panel draws its shear diagram, which it could not at 3 m (it is made with plotly=True, so Plotly is there when the chart first appears). Reset puts the shared slider back in both.",
+      "recorder": "42-panel-shared-reset"
+    },
+    {
+      "id": "panel-sheet-input",
+      "title": "A panel slider tied to a sheet input",
+      "blurb": "In Input mode the span slider of a panel starts from the sheet's own input and moves the chart as it is dragged. When it is let go the value is written into the sheet input and the sheet's own lines under the panel recalculate once: the maximum moment reads 150 kN.m at a span of 10 m.",
+      "recorder": "43-panel-sheet-input"
+    },
+    {
+      "id": "ui-manipulate",
+      "title": "ui.manipulate: a panel in a few lines",
+      "blurb": "The free vibration sample. Three controls are written as tuples above one function and ui.plot draws the decay curve with its axis held still. The damping ratio is dragged from under-damped towards critical, the natural frequency doubles, and a damping ratio of 1.5 turns the curve into the over-damped creep back to rest.",
+      "recorder": "44-ui-manipulate"
+    }
+  ],
   "26.10.20": [
     {
       "id": "page-view",

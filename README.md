@@ -39,7 +39,7 @@ this project is a free alternative and is not affiliated with or endorsed by it.
 * **Samples and templates:** more than 150 worksheets and fill-in templates, grouped and searchable, with a preview.
 * **Installable and offline:** a web app manifest and service worker let the page install on a phone or desktop and calculate without a connection.
 * **Interface languages:** the ribbon, settings and menus can be shown in Spanish, Portuguese, French, German or Chinese (Simplified), with a number format setting for comma decimals. The translations are machine drafts that no native speaker has reviewed yet ([translations/README.md](web/calcpad-web/translations/README.md)).
-* **Interactive panels:** a Python block can define sliders and drop-downs that redraw a chart and table in place, without recalculating the sheet.
+* **Interactive panels:** a Python block can define sliders, number boxes, buttons and drop-downs that redraw charts, tables, Markdown and tabs in place, without recalculating the sheet; `@ui.manipulate` is the short form, a slider can be tied to a sheet input, and the values are saved with the file.
 * **Docked inputs:** in Input mode a panel beside the results holds every input, so a slider can be dragged with the plot it moves in view; the input rows of the form line up in columns.
 * **Plot legends and numerical lines:** sheet plots take curve names with `as "name"` for a legend, and a quantity line can solve for a root, integrate or take a slope.
 * **Phone layout:** the ribbon, editor and results rearrange on a narrow screen, with larger touch targets.

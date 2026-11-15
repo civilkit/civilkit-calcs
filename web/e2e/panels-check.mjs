@@ -3,7 +3,7 @@
 // worksheet is not converted again), the chart and table are redrawn in place, the values survive a recalculation and reach the
 // exports, a player steps one frame per answer, a stuck function is stopped, and a frame cannot make the host do more than
 // choose widget values. Light and dark, desktop and phone screenshots go to --out.
-//   PLAYWRIGHT_BROWSERS_PATH=... node e2e/panels-check.mjs [--url U] [--out DIR]
+//   PLAYWRIGHT_BROWSERS_PATH=... node e2e/panels-check.mjs [--url U] [--out DIR] [--browser chromium|webkit]
 // The chart checks load Plotly.js from its CDN and are skipped, with a line saying so, when there is no network.
 import * as pw from 'playwright';
 import { mkdirSync, readFileSync } from 'node:fs';
@@ -18,7 +18,8 @@ const samples = join(dirname(fileURLToPath(import.meta.url)), '../calcpad-web/pu
 mkdirSync(out, { recursive: true });
 const fails = [];
 const check = (ok, what) => { console.log(`${ok ? 'ok  ' : 'FAIL'} ${what}`); if (!ok) fails.push(what); };
-const browser = await pw[arg('--browser', 'chromium')].launch();
+// --browser webkit runs the same checks in WebKit; PW_EXECUTABLE names a browser that is not the one this Playwright expects
+const browser = await pw[arg('--browser', 'chromium')].launch(process.env.PW_EXECUTABLE ? { executablePath: process.env.PW_EXECUTABLE } : {});
 
 const BEAM = readFileSync(join(samples, 'Panel beam deflection explorer.sheet'), 'utf8');
 const PUMP = readFileSync(join(samples, 'Panel pump operating point player.sheet'), 'utf8');
@@ -62,6 +63,17 @@ async function panelFrame(page, ms = 60000) {
     }
     return null;
 }
+/** The panel frame once it has stopped being replaced: the preview swaps its two stacked frames just after a first draw. */
+async function stablePanelFrame(page, ms = 60000) {
+    let fr = await panelFrame(page, ms);
+    for (let i = 0; i < 6 && fr; i++) {
+        await page.waitForTimeout(1300);
+        const again = await panelFrame(page, ms);
+        if (again === fr) return fr;
+        fr = again;
+    }
+    return fr;
+}
 /** Sets a range input the way a finger does and fires input. */
 const slide = (fr, label, v) => fr.evaluate(([l, val]) => {
     const lab = [...document.querySelectorAll('.cprs-w label')].find(x => x.textContent === l);
@@ -75,7 +87,7 @@ const tableText = fr => fr.locator('.cprs-panel-table').first().innerText().catc
 {
     const { ctx, page, errors } = await open();
     await setText(page, BEAM);
-    const fr = await panelFrame(page);
+    const fr = await stablePanelFrame(page);
     check(!!fr, 'the panel is drawn in the results frame');
     if (fr) {
         check(await fr.locator('.cprs-w').count() === 3, 'three widgets: two sliders and a drop-down');
@@ -103,7 +115,7 @@ const tableText = fr => fr.locator('.cprs-panel-table').first().innerText().catc
 
         // a recalculation (edit a prose line) keeps the values
         await setText(page, BEAM.replace('A simply supported beam', 'A simply supported steel beam'));
-        const fr2 = await panelFrame(page);
+        const fr2 = await stablePanelFrame(page);
         check(!!fr2 && await waitFor(async () => (await fr2.locator('.cprs-w output').first().innerText()) === '10 m'), 'a recalculation starts the panel from the values it was left at');
         check((await tableText(fr2)).includes('150.00 kN.m'), 'and its first result is for those values');
 
@@ -130,7 +142,7 @@ const tableText = fr => fr.locator('.cprs-panel-table').first().innerText().catc
 {
     const { ctx, page } = await open();
     await setText(page, BEAM);
-    const fr = await panelFrame(page);
+    const fr = await stablePanelFrame(page);
     if (fr) {
         const send = (msg) => fr.evaluate(m => new Promise(res => {
             const t = setTimeout(() => res('none'), 3000);
@@ -160,7 +172,7 @@ const tableText = fr => fr.locator('.cprs-panel-table').first().innerText().catc
 {
     const { ctx, page } = await open();
     await setText(page, PUMP);
-    const fr = await panelFrame(page);
+    const fr = await stablePanelFrame(page);
     check(!!fr, 'the pump panel is drawn');
     if (fr) {
         const before = await converts(page);
@@ -184,7 +196,7 @@ const tableText = fr => fr.locator('.cprs-panel-table').first().innerText().catc
 {
     const { ctx, page } = await open();
     await setText(page, STUCK);
-    const fr = await panelFrame(page);
+    const fr = await stablePanelFrame(page);
     check(!!fr, 'the stuck panel is drawn');
     if (fr) {
         await slide(fr, 'x', 4);
@@ -208,8 +220,12 @@ for (const [name, opts] of [
     const { ctx, page, errors } = await open(opts);
     await setText(page, COLUMN);
     // on a phone the editor and the results are panes of one screen; the bar at the bottom switches
-    if (opts.isMobile) await page.getByText('Results', { exact: true }).last().click();
-    const fr = await panelFrame(page);
+    if (opts.isMobile) {
+        // the question about running Python comes first and covers the bar; answer it, then switch to the results
+        await page.locator('#cprs-python-yes').first().click({ timeout: 60000 }).catch(() => {});
+        await page.getByText('Results', { exact: true }).last().click();
+    }
+    const fr = await stablePanelFrame(page);
     check(!!fr, `${name}: the column panel is drawn`);
     if (fr) {
         await waitFor(() => fr.locator('.cprs-panel .js-plotly-plot').count().then(n => n > 0), 30000);
@@ -233,7 +249,7 @@ for (const [name, opts] of [
 {
     const { ctx, page, errors } = await open();
     await setText(page, MANIP);
-    const fr = await panelFrame(page);
+    const fr = await stablePanelFrame(page);
     check(!!fr, 'manipulate: the panel is drawn');
     if (fr) {
         check(await fr.locator('.cprs-w input[type=range]').count() === 3, 'manipulate: three sliders from three tuples');
@@ -290,7 +306,7 @@ const slideRelease = (fr, label, v) => fr.evaluate(([l, val]) => {
 {
     const { ctx, page, errors } = await open();
     await setText(page, TABS);
-    const fr = await panelFrame(page);
+    const fr = await stablePanelFrame(page);
     check(!!fr, 'tabs sample: the panel is drawn');
     if (fr) {
         const md = () => fr.locator('.cprs-panel-md').first().innerText().catch(() => '');
@@ -329,7 +345,7 @@ const slideRelease = (fr, label, v) => fr.evaluate(([l, val]) => {
     const { ctx, page } = await open();
     await setText(page, ['<!--sheet-->', '# Md', '', '```python', 'import ui', 'x = ui.slider("x", 1, 0, 5)', '@ui.panel(x)', 'def m(x):',
         '    return ui.markdown("# Head\\n<img src=x onerror=\\"parent.__pwn=1\\"> **bold** `<b>` x=%d\\n\\n- one\\n- two" % x)', '```', ''].join('\n'));
-    const fr = await panelFrame(page);
+    const fr = await stablePanelFrame(page);
     if (fr) {
         await slide(fr, 'x', 3);
         check(await waitFor(async () => (await fr.locator('.cprs-panel-md').first().innerText()).includes('x=3')), 'markdown: an update is drawn');
@@ -344,7 +360,7 @@ const slideRelease = (fr, label, v) => fr.evaluate(([l, val]) => {
 {
     const { ctx, page } = await open();
     await setText(page, TABS);
-    const fr = await panelFrame(page);
+    const fr = await stablePanelFrame(page);
     if (fr) {
         const send = (msg) => fr.evaluate(m => new Promise(res => {
             const t = setTimeout(() => res('none'), 8000);
@@ -370,7 +386,7 @@ const slideRelease = (fr, label, v) => fr.evaluate(([l, val]) => {
     const { ctx, page } = await open();
     await setText(page, ['<!--sheet-->', '# Slow', '', '```python', 'import ui', 'import time', 'x = ui.slider("x", 1, 0, 5)', '@ui.panel(x)', 'def slow(x):',
         '    if x == 3:', '        time.sleep(1.8)', '    return "x is %d" % x', '```', ''].join('\n'));
-    const fr = await panelFrame(page);
+    const fr = await stablePanelFrame(page);
     if (fr) {
         await slide(fr, 'x', 3);
         check(await waitFor(async () => (await fr.locator('.cprs-panel-slow').count()) === 1, 20000), 'a slow update (1.8 s) is reported, and a player would be stopped');
@@ -384,7 +400,7 @@ const slideRelease = (fr, label, v) => fr.evaluate(([l, val]) => {
 {
     const { ctx, page, errors } = await open();
     await setText(page, SHARED);
-    const fr = await panelFrame(page);
+    const fr = await stablePanelFrame(page);
     check(!!fr, 'shared: both panels are drawn');
     if (fr) {
         check(await fr.locator('.cprs-panel').count() === 2, 'shared: two panels');
@@ -408,7 +424,7 @@ const slideRelease = (fr, label, v) => fr.evaluate(([l, val]) => {
 {
     const { ctx, page } = await open();
     await setText(page, BEAM);
-    const fr = await panelFrame(page);
+    const fr = await stablePanelFrame(page);
     if (fr) {
         await slide(fr, 'Span', 10);
         check(await waitFor(async () => (await tableText(fr)).includes('150.00 kN.m')), 'saved values: the panel was moved to 10 m');
@@ -426,7 +442,7 @@ const slideRelease = (fr, label, v) => fr.evaluate(([l, val]) => {
             await p2.goto(url);
             await p2.waitForFunction(() => window.calcpadActiveEditor != null && window.calcpadFiles != null, null, { timeout: 60000 });
             await p2.evaluate(v => window.calcpadActiveEditor.setValue(v), saved);
-            const fr2 = await panelFrame(p2);
+            const fr2 = await stablePanelFrame(p2);
             check(!!fr2 && await waitFor(async () => (await fr2.locator('.cprs-w output').first().innerText()) === '10 m'), 'saved values: a reopened file starts the panel at 10 m');
             await ctx2.close();
         }
@@ -436,10 +452,10 @@ const slideRelease = (fr, label, v) => fr.evaluate(([l, val]) => {
 {
     const { ctx, page, errors } = await open();
     await setText(page, SHEETIN);
-    await panelFrame(page);   // answers the question about running Python, which would otherwise cover the buttons
+    await stablePanelFrame(page);   // answers the question about running Python, which would otherwise cover the buttons
     await page.locator('.preview-mode-group .toolbar-btn', { hasText: /^Input$/ }).click();
     await page.waitForTimeout(1500);
-    const fr = await panelFrame(page, 90000);
+    const fr = await stablePanelFrame(page, 90000);
     check(!!fr, 'sheet input: the panel is drawn in Input mode');
     if (fr) {
         check(await fr.locator('.cprs-w output').first().innerText().catch(() => '') === '6 m', 'sheet input: the slider starts from the sheet input (ui.input, 6 m)');
@@ -459,6 +475,24 @@ const slideRelease = (fr, label, v) => fr.evaluate(([l, val]) => {
         check((await converts(page)) > before, 'sheet input: and the sheet is calculated again once');
     }
     check(errors.length === 0, `sheet input: no page errors${errors.length ? ': ' + errors[0] : ''}`);
+    await ctx.close();
+}
+
+// ---- 9. completions for `ui.` inside a Python block ---------------------------------------------------------------------------
+{
+    const { ctx, page } = await open();
+    await setText(page, '<!--sheet-->\n# T\n\n```python\nimport ui\nx = ui.\n```\n\nui.\n');
+    await page.waitForTimeout(1500);
+    const suggest = async (line, col) => {
+        await page.evaluate(([l, c]) => { const e = window.calcpadActiveEditor; e.focus(); e.setPosition({ lineNumber: l, column: c }); e.trigger('t', 'editor.action.triggerSuggest', {}); }, [line, col]);
+        await page.waitForTimeout(1200);
+        const rows = (await page.locator('.suggest-widget .monaco-list-row').allInnerTexts().catch(() => [])).map(r => r.split('\n')[0]);
+        await page.keyboard.press('Escape');
+        return rows;
+    };
+    const inside = await suggest(6, 8);
+    check(inside.length >= 10 && inside.includes('manipulate') && inside.includes('number') && inside.includes('markdown'), `completions: "ui." in a Python block offers the controls and helpers (${inside.length} shown)`);
+    check((await suggest(9, 4)).length === 0, 'completions: the same text outside a Python block offers nothing');
     await ctx.close();
 }
 
