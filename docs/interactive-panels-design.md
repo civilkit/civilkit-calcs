@@ -1,7 +1,6 @@
 # Interactive panels: design and prototype
 
-Status: the vertical slice (phase 0) shipped in 26.10.18. Phases 1 to 3 and `ui.manipulate` / `ui.plot` (the short form, in the manner of
-Mathematica's Manipulate) shipped in 26.11.2: number boxes, buttons, Markdown, row/column/tabs, Reset, a widget shared by panels,
+Status: the vertical slice (phase 0) shipped in 26.10.18. Phases 1 to 3 and `ui.manipulate` / `ui.plot` (the short form, the short form) shipped in 26.11.2: number boxes, buttons, Markdown, row/column/tabs, Reset, a widget shared by panels,
 `plotly=True`, unchanged results not sent again, a slow-frame stop, values saved with the file, sliders tied to sheet inputs, chart
 pictures for export, `ui` completions in the editor. What is built is checked by `web/e2e/panels-check.mjs`; the sections that say
 **Proposed** or **Not built** are not. The whole thing is opt-in by the import, needs no flag, and changes nothing for a worksheet

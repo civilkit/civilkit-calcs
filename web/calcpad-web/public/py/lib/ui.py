@@ -338,7 +338,7 @@ def _spec_widget(spec, labels):
 
 
 def manipulate(*controls, labels=None):
-    """The short form of a panel, in the manner of Mathematica's Manipulate. One tuple per argument of the function, in order:
+    """The short form of a panel, as a short form of a panel. One tuple per argument of the function, in order:
 
         @ui.manipulate(("a", 1, 5), ("n", 1, 6, 2, 1), ("mode", ["sin", "cos"]), ("grid", True), labels={"a": "Amplitude"})
         def wave(a, n, mode, grid): ...

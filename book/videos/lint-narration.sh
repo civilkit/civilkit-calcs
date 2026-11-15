@@ -1,5 +1,5 @@
 #!/bin/sh
-# Lints the eight video storyboards. Run from anywhere:  book/videos/lint-narration.sh [file.md ...]
+# Lints the narrated video storyboards (a file that says it is a silent clip has no narration to lint). Run from anywhere:  book/videos/lint-narration.sh [file.md ...]
 # Rules:
 #   * the narration (the S1, S2 ... lines and the "Full text for the voice" block) has no digits, no
 #     the word "live", no em-dash and no en-dash, and every sentence is short (at most 30 words);
@@ -8,7 +8,7 @@
 #     and every scene names a narration line that exists;
 #   * no em-dash anywhere in the file.
 cd "$(dirname "$0")" || exit 2
-if [ "$#" -gt 0 ]; then files="$*"; else files=$(ls [0-9][0-9]-*.md); fi
+if [ "$#" -gt 0 ]; then files="$*"; else files=$(grep -L 'a silent clip' [0-9][0-9]-*.md); fi
 exec python3 - $files <<'PY'
 import re, sys
 bad = 0

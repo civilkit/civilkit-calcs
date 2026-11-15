@@ -35,7 +35,7 @@ export const UI_ITEMS: UiItem[] = [
       doc: 'Decorator: the function runs now and again, alone, whenever one of its widgets changes. A widget given to two panels is one control.' },
     { name: 'manipulate', kind: K.Function, snippet: 'manipulate(("${1:name}", ${2:min}, ${3:max}), labels={})',
       detail: '@ui.manipulate(("L", 2, 12, 6, 0.5, "m"), ("mode", [..]), ("on", True), labels=None)',
-      doc: 'The short form of a panel, as in Mathematica. One tuple per argument of the function, in order.' },
+      doc: 'The short form of a panel. One tuple per argument of the function, in order.' },
     { name: 'plot', kind: K.Function, snippet: 'plot(${1:x}, ${2:y}, names=[${3}], xlabel="${4}", ylabel="${5}", ylim=${6:None})',
       detail: 'ui.plot(x, *ys, names=None, xlabel="", ylabel="", title="", xlim=None, ylim=None, height=320)',
       doc: 'A line chart in one call. Give xlim and ylim to keep the axes still while a control moves.' },

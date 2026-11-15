@@ -82,21 +82,24 @@ const shown = (fr, k) => fr.evaluate((k) => {
     return out.innerText + '|' + figs.join('|');
 }, k);
 
-/** Moves the first control of panel k: a slider to its far end, a drop-down to its next option, a checkbox over. */
+/** Moves the first control of panel k: a slider to its far end, a number box up by one, a drop-down to its next option, a checkbox over. */
 const move = (fr, k) => fr.evaluate((k) => {
     const p = document.querySelectorAll('.cprs-panel')[k];
     const el = p.querySelector('.cprs-panel-ui input, .cprs-panel-ui select');
     if (el.type === 'range') { el.value = Number(el.value) === Number(el.max) ? el.min : el.max; el.dispatchEvent(new Event('input', { bubbles: true })); }
     else if (el.type === 'checkbox') { el.checked = !el.checked; el.dispatchEvent(new Event('change', { bubbles: true })); }
+    else if (el.type === 'number') { el.value = String(Number(el.value) + 1); el.dispatchEvent(new Event('change', { bubbles: true })); }
     else { el.selectedIndex = (el.selectedIndex + 1) % el.options.length; el.dispatchEvent(new Event('change', { bubbles: true })); }
 }, k);
 
 for (const ex of examples) {
     const where = `python-panels.md:${ex.line}`;
     const py = (/```python\n([\s\S]*?)^```/m.exec(ex.text) ?? [, ''])[1];
-    const panels = (py.match(/^\s*@ui\.panel\(/gm) ?? []).length;
-    const panelArgs = [...py.matchAll(/^\s*@ui\.panel\(([^)]*)\)/gm)].map((m) => m[1].split(',').filter((s) => s.trim()).length);
-    const widgets = panelArgs.reduce((a, b) => a + b, 0);
+    // @ui.panel(a, b) counts its arguments; @ui.manipulate(("L", 2, 12), ("mode", [...]), labels=...) counts its tuples
+    const manip = [...py.matchAll(/^\s*@ui\.manipulate\(([\s\S]*?)\)\s*\n\s*def /gm)].map((m) => (m[1].match(/\(\s*"\w+"\s*,/g) ?? []).length);
+    const panels = (py.match(/^\s*@ui\.(panel|manipulate)\(/gm) ?? []).length;
+    const panelArgs = [...py.matchAll(/^\s*@ui\.panel\(([^)]*)\)/gm)].map((m) => m[1].split(',').filter((s) => s.trim() && !/^\s*plotly\s*=/.test(s)).length);
+    const widgets = panelArgs.reduce((a, b) => a + b, 0) + manip.reduce((a, b) => a + b, 0);
     const chart = /go\.Figure\(/.test(py);
     const three = /go\.(Surface|Scatter3d|Mesh3d)\(/.test(py);
     const table = /ui\.table\(/.test(py);
