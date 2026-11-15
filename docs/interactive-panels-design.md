@@ -1,8 +1,9 @@
 # Interactive panels: design and prototype
 
-Status: design, with a working vertical slice on the `interactive-panels` branch (`import ui` in a Python block). It is opt-in by the
-import, needs no flag, and changes nothing for a worksheet that does not use it. Sections marked **Prototype** describe what is
-built and checked (`web/e2e/panels-check.mjs`); everything else is proposed.
+Status: the vertical slice (phase 0) shipped in 26.10.18, with a guide chapter and three sample sheets. `ui.manipulate` and `ui.plot`
+(the short form, in the manner of Mathematica's Manipulate) came after it. Sections marked **Prototype** describe what is built and
+checked (`web/e2e/panels-check.mjs`); everything else is proposed. It is opt-in by the import, needs no flag, and changes nothing
+for a worksheet that does not use it.
 
 Two requests ask for this: interactive, code-controlled panels, and animation of a code cell's output. They are one feature: a
 widget changes a value, Python runs again for the part that depends on it, and a chart, table or text is redrawn in place. An
@@ -62,6 +63,10 @@ def beam(L, mat, ribs):
 * The function returns a Plotly figure (not shown with `fig.show()` inside it), a `str` or `ui.text(...)` (always text, never
   HTML), `ui.table(rows, header=)`, or a list of these. Anything else is a `TypeError` naming the type.
 * `print()` inside a panel function is dropped. The first call's print output is shown as usual.
+* **Short form (built):** `@ui.manipulate(("L", 2, 12, 6, 0.5, "m"), ("mode", [..]), ("on", True), labels={...})` makes the widgets from
+  tuples and decorates the function as a panel. The controls are an ordered list of tuples, not keyword arguments, because this
+  runtime does not promise keyword (or dict) order. `ui.plot(x, y1, y2, ..., names=, xlabel=, ylabel=, xlim=, ylim=)` returns a line
+  chart so the common case needs no Plotly code.
 * **Proposed, not built:** `ui.row(...)`, `ui.column(...)`, `ui.tabs(("Moment", fig1), ("Shear", fig2))` as return values;
   `ui.button("Recalculate")` (an event, not a value); `ui.markdown(s)`; `ui.number(...)` (a typed-in box); `ui.bind(widget, fn)` to
   share one widget between panels; `ui.panel(..., plotly=True)` to load Plotly for a panel whose first result is not a chart;

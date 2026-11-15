@@ -9,6 +9,11 @@
         ...
         return fig            # a plotly figure, text, ui.table(...), or a list of them
 
+    # the short form: the controls are written as tuples, in the order of the function's arguments
+    @ui.manipulate(("a", 1, 5), ("n", 1, 6, 2), ("mode", ["sin", "cos"]), ("grid", True))
+    def wave(a, n, mode, grid):
+        ...
+
 The block runs once, as always. For every `@ui.panel` the page draws the widgets and the first result. When a widget changes, the
 page sends the new values back and ONLY the panel's function runs again, in the interpreter that is still alive; the sheet is not
 recalculated. The function should depend on its arguments and on values the block already computed, not on state it changes.
@@ -19,7 +24,7 @@ page is checked here again: a value is converted by its widget, clamped to the w
 import json
 import _cp_host
 
-__all__ = ["slider", "select", "checkbox", "player", "panel", "table", "text"]
+__all__ = ["slider", "select", "checkbox", "player", "panel", "manipulate", "plot", "table", "text"]
 
 _panels = {}
 _seed = None
@@ -201,6 +206,69 @@ def checkbox(name, default=False, label=None):
 def player(name, start, stop, fps=5, loop=True, label=None):
     """A frame number from start to stop (ints) with play and pause. The next frame is asked for only after the last one is drawn."""
     return _Player(name, start, stop, fps, loop, label)
+
+
+def _spec_widget(spec, labels):
+    """One widget from a tuple of ui.manipulate: ("L", lo, hi[, default[, step[, unit]]]), ("mode", [options]), ("on", True).
+    A widget made with ui.slider(...) and the others is accepted as it is."""
+    if isinstance(spec, _Widget):
+        return spec
+    if not isinstance(spec, (list, tuple)) or len(spec) < 2 or not isinstance(spec[0], str):
+        raise TypeError("ui.manipulate: each control is a tuple that starts with a name, such as ('L', 2, 12) or ('mode', ['a', 'b'])")
+    name, rest = spec[0], list(spec[1:])
+    label = labels.get(name) if labels else None
+    if len(rest) == 1 and isinstance(rest[0], bool):
+        return _Checkbox(name, rest[0], label)
+    if len(rest) == 1 and isinstance(rest[0], (list, tuple, dict)):
+        return _Select(name, rest[0], None, label)
+    unit = ""
+    if len(rest) >= 3 and isinstance(rest[-1], str):
+        unit = rest.pop()
+    if len(rest) < 2 or len(rest) > 4:
+        raise TypeError("ui.manipulate(" + repr(name) + "): use (name, min, max), (name, min, max, default), (name, min, max, default, step) "
+                        "and, for a unit, a last text such as 'm'")
+    lo, hi = rest[0], rest[1]
+    default = rest[2] if len(rest) > 2 and rest[2] is not None else None
+    step = rest[3] if len(rest) > 3 else None
+    if len(rest) == 4 and isinstance(rest[3], str):
+        unit, step = rest[3], None
+    _finite(lo, name + " min")
+    _finite(hi, name + " max")
+    if default is None:
+        default = (lo + hi) // 2 if isinstance(lo, int) and isinstance(hi, int) and (hi - lo) % 2 == 0 else (lo + hi) / 2.0
+    return _Slider(name, default, lo, hi, step, unit, label)
+
+
+def manipulate(*controls, labels=None):
+    """The short form of a panel, in the manner of Mathematica's Manipulate. One tuple per argument of the function, in order:
+
+        @ui.manipulate(("a", 1, 5), ("n", 1, 6, 2, 1), ("mode", ["sin", "cos"]), ("grid", True), labels={"a": "Amplitude"})
+        def wave(a, n, mode, grid): ...
+
+    ("a", lo, hi) is a slider that starts in the middle; a default, a step and a unit follow: ("L", 2, 12, 6, 0.5, "m").
+    ("mode", [options]) is a drop-down (options as for ui.select) and ("grid", True) a checkbox. The function is a panel: it runs
+    now, and again alone when a control moves."""
+    return panel(*[_spec_widget(c, labels) for c in controls])
+
+
+def plot(x, *ys, names=None, xlabel="", ylabel="", title="", xlim=None, ylim=None, height=320):
+    """A Plotly line chart in one call, for a panel to return. x and every y are lists (or numpy arrays) of the same length.
+    Names label the lines (a line with no name stays out of the legend). Give xlim and ylim, such as ylim=(-5, 5), to keep the axes
+    still while a control moves."""
+    import plotly.graph_objects as go
+    if not ys:
+        raise TypeError("ui.plot(x, y, ...) needs at least one y")
+    fig = go.Figure()
+    for i, y in enumerate(ys):
+        nm = names[i] if names and i < len(names) else ""
+        fig.add_trace(go.Scatter(x=x, y=y, mode="lines", name=nm or None, showlegend=bool(nm)))
+    fig.update_layout(height=height, margin=dict(l=56, r=16, t=40 if title else 16, b=44), xaxis_title=xlabel, yaxis_title=ylabel,
+                      title=title or None)
+    if xlim:
+        fig.update_xaxes(range=list(xlim))
+    if ylim:
+        fig.update_yaxes(range=list(ylim))
+    return fig
 
 
 class table:

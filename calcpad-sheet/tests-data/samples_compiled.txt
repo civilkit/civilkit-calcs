@@ -64,6 +64,8 @@ Panel beam deflection explorer.sheet|false|b00638c8a5bc9325
 Panel beam deflection explorer.sheet|true|2fb3c49ef04a397f
 Panel column buckling player.sheet|false|ae6eb3afcc8edfd4
 Panel column buckling player.sheet|true|ae6eb3afcc8edfd4
+Panel manipulate free vibration.sheet|false|ee9691013cea0918
+Panel manipulate free vibration.sheet|true|ee9691013cea0918
 Panel pump operating point player.sheet|false|b7fd99033a9c7dc2
 Panel pump operating point player.sheet|true|b7fd99033a9c7dc2
 Plot gallery implicit curves.sheet|false|6df03be9c77abd14

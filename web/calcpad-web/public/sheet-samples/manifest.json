@@ -677,6 +677,21 @@
    "read": false,
    "python": true,
    "assets": []
+  },
+  {
+   "id": "panels-manipulate",
+   "title": "Free vibration with ui.manipulate (panel)",
+   "group": "Panels",
+   "folder": "Panels",
+   "file": "sheet-samples/Panel manipulate free vibration.sheet",
+   "upstream": "",
+   "description": "The short form of a panel: ui.manipulate lists the controls as tuples and ui.plot draws the chart; frequency and damping ratio reshape the decay curve.",
+   "codes": [],
+   "ui": false,
+   "scripts": false,
+   "read": false,
+   "python": true,
+   "assets": []
   }
  ]
 }

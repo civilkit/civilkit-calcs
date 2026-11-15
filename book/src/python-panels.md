@@ -7,8 +7,9 @@ by one Python block. Move a slider and one Python function runs again with the n
 chart or table is redrawn in place. The rest of the sheet is not recalculated, so a panel stays
 quick even when the sheet is long.
 
-The samples in the **Panels** group show three of them: a beam deflection explorer, a pump
-operating point with a play button, and a column buckling player.
+The samples in the **Panels** group show four of them: a beam deflection explorer, a pump
+operating point with a play button, a column buckling player, and a free vibration chart written
+with the short form, `ui.manipulate`.
 
 ## Prompt-friendly summary
 
@@ -187,6 +188,51 @@ def wave(t):
 A player never starts by itself, and it pauses when the browser tab is hidden. With `loop=False` it
 stops at the last frame.
 
+## The short form: `ui.manipulate`
+
+When a panel is a few controls and a function, `ui.manipulate` writes both at once, in the manner of
+Mathematica's Manipulate. Each control is one tuple, in the order of the function's arguments, and
+`ui.plot` draws a line chart in one call.
+
+````sheet python
+# Damped decay
+
+```python
+import ui
+import numpy as np
+
+@ui.manipulate(("fn", 0.5, 5, 2, 0.1, "Hz"), ("zeta", 0, 0.9, 0.2, 0.05),
+               labels={"fn": "Natural frequency", "zeta": "Damping ratio"})
+def decay(fn, zeta):
+    wn = 2 * np.pi * fn
+    t = np.linspace(0, 5 / fn, 300)
+    env = np.exp(-zeta * wn * t)
+    wd = wn * np.sqrt(1 - zeta**2)
+    return ui.plot(t, env * np.cos(wd * t), env, names=["Displacement", "Envelope"],
+                   xlabel="Time (s)", ylim=(-1.1, 1.1))
+```
+````
+
+A tuple is read like this:
+
+* `("L", 2, 12)` is a slider from 2 to 12 that starts in the middle. A default, a step and a unit
+  can follow, in that order: `("L", 2, 12, 6, 0.5, "m")`. A unit can also be the last item on its
+  own: `("L", 2, 12, "m")`.
+* `("mode", ["Deflection", "Moment"])` is a drop-down; the options are written as for `ui.select`.
+* `("grid", True)` is a checkbox.
+* A widget made with `ui.slider`, `ui.player` and the others can be used in place of a tuple, for a
+  control the tuple cannot describe (a player, for one).
+* `labels={"L": "Span"}` gives a control the text the reader sees; the name stays `L`.
+
+The tuples are in a fixed order because the Python here does not promise the order of keyword
+arguments, which is why `ui.manipulate(L=(2, 12))` is not offered.
+
+`ui.plot(x, y1, y2, ..., names=[...], xlabel="", ylabel="", title="", xlim=None, ylim=None,
+height=320)` makes a line chart. Give `ylim` (and `xlim`) when the picture should keep its axes as
+a control moves; otherwise the chart rescales every time. A line with an empty name is left out of
+the legend. For anything else (a bar chart, a surface, several panels of axes) build the figure
+with `plotly.graph_objects` as before.
+
 ## The `ui` reference
 
 | Call | Draws | The function receives |
@@ -196,6 +242,8 @@ stops at the last frame.
 | `ui.checkbox(name, default=False, label=None)` | A checkbox | `True` or `False` |
 | `ui.player(name, start, stop, fps=5, loop=True, label=None)` | A slider with Play and Pause | A whole frame number from `start` to `stop` |
 | `@ui.panel(widget, ...)` | The controls, then the function's result | (a decorator) |
+| `@ui.manipulate(("name", min, max, ...), ..., labels=None)` | The same, with each control written as a tuple | (a decorator; see the short form above) |
+| `ui.plot(x, y, ..., names=None, xlabel="", ylabel="", title="", xlim=None, ylim=None, height=320)` | A line chart | (a return value) |
 | `ui.table(rows, header=None)` | A table | (a return value) |
 | `ui.text(s)` | A line of plain text | (a return value) |
 
