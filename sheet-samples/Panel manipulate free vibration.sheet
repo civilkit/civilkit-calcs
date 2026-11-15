@@ -1,0 +1,28 @@
+<!--sheet-->
+# Free vibration (manipulate)
+
+A single degree of freedom system released from a displacement of 1. `ui.manipulate` is the short form of a panel: one tuple per control, in the order of the function's arguments, and `ui.plot` draws the chart. Move a control and only the function runs again; the rest of the sheet is not recalculated.
+
+```python
+import ui
+import numpy as np
+
+@ui.manipulate(("fn", 0.5, 5, 2, 0.1, "Hz"), ("zeta", 0, 1.5, 0.1, 0.05), ("cycles", 2, 10, 5, 1),
+               labels={"fn": "Natural frequency", "zeta": "Damping ratio", "cycles": "Time shown (cycles)"})
+def free_vibration(fn, zeta, cycles):
+    wn = 2 * np.pi * fn
+    t = np.linspace(0, cycles / fn, 400)
+    env = np.exp(-zeta * wn * t)
+    if zeta < 1:
+        wd = wn * np.sqrt(1 - zeta**2)
+        x = env * (np.cos(wd * t) + zeta * wn / wd * np.sin(wd * t))
+        note = "Underdamped: damped frequency %.2f Hz, each cycle is %.0f %% of the one before." % (wd / (2 * np.pi), 100 * np.exp(-2 * np.pi * zeta / np.sqrt(1 - zeta**2)))
+    elif zeta == 1:
+        x = env * (1 + wn * t)
+        note = "Critically damped: the fastest return to rest without overshoot."
+    else:
+        s = wn * np.sqrt(zeta**2 - 1)
+        x = env * (np.cosh(s * t) + zeta * wn / s * np.sinh(s * t))
+        note = "Overdamped: no oscillation, a slow creep back to rest."
+    return [ui.plot(t, x, env, -env, names=["Displacement", "Envelope"], xlabel="Time (s)", ylabel="x / x0", ylim=(-1.1, 1.1)), note]
+```

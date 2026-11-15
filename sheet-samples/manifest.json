@@ -677,6 +677,66 @@
    "read": false,
    "python": true,
    "assets": []
+  },
+  {
+   "id": "panels-manipulate",
+   "title": "Free vibration with ui.manipulate (panel)",
+   "group": "Panels",
+   "folder": "Panels",
+   "file": "sheet-samples/Panel manipulate free vibration.sheet",
+   "upstream": "",
+   "description": "The short form of a panel: ui.manipulate lists the controls as tuples and ui.plot draws the chart; frequency and damping ratio reshape the decay curve.",
+   "codes": [],
+   "ui": false,
+   "scripts": false,
+   "read": false,
+   "python": true,
+   "assets": []
+  },
+  {
+   "id": "panels-tabs",
+   "title": "Beam diagrams with tabs, number boxes and Markdown (panel)",
+   "group": "Panels",
+   "folder": "Panels",
+   "file": "sheet-samples/Panel beam tabs number markdown.sheet",
+   "upstream": "",
+   "description": "Number boxes, a button, tabs, a Markdown summary and a row of results in one panel; a click count steps through load cases.",
+   "codes": [],
+   "ui": false,
+   "scripts": false,
+   "read": false,
+   "python": true,
+   "assets": []
+  },
+  {
+   "id": "panels-sheet-input",
+   "title": "Panel slider tied to a sheet input",
+   "group": "Panels",
+   "folder": "Panels",
+   "file": "sheet-samples/Panel sheet input and slider.sheet",
+   "upstream": "",
+   "description": "A slider made with sheet=True starts from a sheet input and writes its value back into it when released, so the lines below recalculate.",
+   "codes": [],
+   "ui": true,
+   "scripts": false,
+   "read": false,
+   "python": true,
+   "assets": []
+  },
+  {
+   "id": "panels-shared",
+   "title": "Two panels sharing one slider",
+   "group": "Panels",
+   "folder": "Panels",
+   "file": "sheet-samples/Panel shared slider two panels.sheet",
+   "upstream": "",
+   "description": "One slider object in two panels moves both; plotly=True loads Plotly for a panel whose first result is only text; Reset restores the controls.",
+   "codes": [],
+   "ui": false,
+   "scripts": false,
+   "read": false,
+   "python": true,
+   "assets": []
   }
  ]
 }
