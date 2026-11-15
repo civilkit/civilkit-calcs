@@ -159,16 +159,19 @@ const fence = (py) => `# Fact ${++factN}\n\n\`\`\`python\n${py}\n\`\`\`\n`;
     }
 }
 {
-    // two widgets that only share a name are not linked: it is the same object that counts
+    // two widgets that only share a name are not linked: it is the same object that counts. Different words ("uno", "dos") so the
+    // page of the fixture before, still on screen until this one is drawn, cannot be taken for it.
     const fr = await run(fence([
         'import ui', 'A = ui.slider("L", 6, 2, 12, unit="m")', 'B = ui.slider("L", 6, 2, 12, unit="m")',
-        '@ui.panel(A)', 'def one(L):', '    return "one %g" % L',
-        '@ui.panel(B)', 'def two(L):', '    return "two %g" % L'].join('\n')), async (f) => (await f.locator('.cprs-panel .cprs-w').count()) >= 2);
+        '@ui.panel(A)', 'def uno(L):', '    return "uno %g" % L',
+        '@ui.panel(B)', 'def dos(L):', '    return "dos %g" % L'].join('\n')),
+    async (f) => (await f.locator('.cprs-panel-out').nth(1).innerText().catch(() => '')).startsWith('dos 6'));
+    check(!!fr, 'fact: two same-named sliders are drawn');
     if (fr) {
         await move(fr, 0);
-        check(await waitFor(async () => (await shown(fr, 0)).startsWith('one 12')), 'fact: the first of two same-named sliders follows its own slider');
-        check((await shown(fr, 1)).startsWith('two 6'), 'fact: the second does not move with it');
-    } else check(false, 'fact: two same-named sliders are drawn');
+        check(await waitFor(async () => (await shown(fr, 0)).startsWith('uno 12')), 'fact: the first of two same-named sliders follows its own slider');
+        check((await shown(fr, 1)).startsWith('dos 6'), 'fact: the second does not move with it');
+    }
 }
 for (const [py, re, what] of [
     ['import numpy as np\nX, Y = np.meshgrid([1, 2], [3, 4])\nprint("grid", len(X), len(X[0]))', /grid 2 2/, 'numpy.meshgrid works'],
