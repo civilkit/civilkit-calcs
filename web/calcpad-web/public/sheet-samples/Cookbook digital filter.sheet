@@ -1,0 +1,156 @@
+<!--sheet-->
+# From an analog low-pass to a digital filter: the bilinear transform
+
+A sensor signal usually needs smoothing before a controller or a logger sees it, and the smoothing is often designed as an analog RC low-pass and then run on a microcontroller. This sheet turns the first-order low-pass $H(s) = \omega_c/(s+\omega_c)$ into a two-tap difference equation with the bilinear (Tustin) transform, checks the DC and Nyquist gains, simulates the step response, and compares the digital and analog frequency responses so you can see how much the sampling distorts the frequency axis. Choose Input in the results bar, give it a cutoff in Hz and a sample rate in Hz, and it hands back the coefficients and a C update function.
+
+>> #rad
+>> #round 6
+
+## Inputs
+
+The base case is $\omega_c = 1$ rad/s (a cutoff of $1/2\pi$ Hz) sampled every 0.1 s (10 Hz).
+
+fc: ? 0.15915494 Hz [0.01 .. 4 step 0.001] | cutoff frequency
+fs: ? 10 Hz [2 .. 200 step 1] | sample rate
+prewarp: ? off | prewarp the analog cutoff so the digital filter is exactly -3 dB at fc
+
+## Analog prototype and the transform
+
+The analog cutoff and the sample time are
+
+wc: 2 * pi * fc -> 1/s | cutoff in rad/s
+T: 1 / fs -> s | sample time
+if fc < fs / 2: "PASS: the cutoff is below the Nyquist frequency fs/2." else: "FAIL: the cutoff is not below fs/2, a digital filter cannot realise it."
+if fc < fs / 4: "PASS: the cutoff is below fs/4, so the frequency warping stays small." else: "The cutoff is above fs/4: expect noticeable warping, consider prewarping."
+
+The bilinear transform replaces $s$ by $\frac{2}{T}\frac{z-1}{z+1}$. Writing $k = \omega_c T/2$:
+
+$$ H(z) = \frac{\omega_c}{\frac{2}{T}\frac{z-1}{z+1} + \omega_c} = \frac{k\,(z+1)}{(1+k)\,z + (k-1)} = \frac{b_0 z + b_1}{z + a_1} $$
+
+so that
+
+$$ b_0 = b_1 = \frac{k}{1+k}, \qquad a_1 = \frac{k-1}{k+1} $$
+
+With prewarping on, $\omega_c$ in the transform is replaced by $\frac{2}{T}\tan(\omega_c T/2)$, which moves the digital -3 dB point onto $f_c$ exactly (see the warping section).
+
+wc_a: (2 / T) * tan(wc * T / 2) -> 1/s | prewarped cutoff, used only if the box is ticked
+wc_d: if(prewarp == 1; wc_a; wc) -> 1/s | cutoff used in the transform
+k: wc_d * T / 2 | half of cutoff times sample time
+b0: k / (1 + k)
+b1: k / (1 + k)
+a1: (k - 1) / (k + 1)
+
+For the base case $k = 1/20$ and the exact fractions are $b_0 = b_1 = 1/21$ and $a_1 = -19/21$, which gives $H(z) = (z+1)/(21z - 19)$. As decimals:
+
+| Coefficient | Exact (base case) | Decimal |
+| --- | --- | --- |
+| b0 | 1/21 | 0.0476190 |
+| b1 | 1/21 | 0.0476190 |
+| a1 | -19/21 | -0.9047619 |
+
+The check below uses $k = 1/20$ on its own, not the inputs, so it holds whatever the sliders say:
+
+kb: 1 / 20 | base-case k
+b0b: kb / (1 + kb)
+a1b: (kb - 1) / (kb + 1)
+if abs(21 * b0b - 1) < 0.000000001 and abs(21 * a1b + 19) < 0.000000001: "PASS: b0 = 1/21 and a1 = -19/21 for k = 1/20." else: "FAIL: the base-case coefficients are not 1/21 and -19/21."
+
+## Gain checks
+
+A low-pass must pass DC unchanged and block the Nyquist frequency. $H(z)$ is evaluated at $z = 1$ (DC) and $z = -1$ (half the sample rate).
+
+H_z(z): (b0 * z + b1) / (z + a1) | digital transfer function
+H_dc: H_z(1) | gain at DC
+H_ny: H_z(-1) | gain at the Nyquist frequency
+if abs(H_dc - 1) < 0.000000001: "PASS: DC gain is 1." else: "FAIL: DC gain is not 1."
+if abs(H_ny) < 0.000000001: "PASS: Nyquist gain is 0." else: "FAIL: Nyquist gain is not 0."
+
+## Step response, 100 samples
+
+The difference equation is $y[n] = b_0 x[n] + b_1 x[n-1] - a_1 y[n-1]$. Feeding a unit step ($x = 1$ from $n = 0$, and $x[-1] = 0$) gives $y[0] = b_0$, and each sample then moves towards 1. Solving the recursion gives $y[n] = 1 - (1 - b_0)(-a_1)^n$, which is used below as an independent check of the loop.
+
+>> #hide
+>> x = vector(100)
+>> y = vector(100)
+>> e_max = 0
+>> #for n = 1 : 100
+>>   x.n = 1
+>> #loop
+>> y.1 = b0 * x.1
+>> #for n = 2 : 100
+>>   y.n = b0 * x.n + b1 * x.(n - 1) - a1 * y.(n - 1)
+>>   e_max = max(e_max; abs(y.n - (1 - (1 - b0) * (-a1)^(n - 1))))
+>> #loop
+>> #show
+
+y_first: y.1 | first sample, equals b0
+y_last: y.100 | sample n = 99
+e_closed: e_max | largest gap between the loop and the closed form
+if abs(y_first - b0) < 0.000000001: "PASS: the first sample is b0." else: "FAIL: the first sample is not b0."
+if e_closed < 0.000000001: "PASS: the loop matches the closed-form step response." else: "FAIL: the loop and the closed form disagree."
+if abs(y_last - 1) < 0.001: "PASS: after 100 samples the output is within 0.001 of the final value 1." else: "The output has not yet settled to within 0.001 of 1 after 100 samples, so use a longer run."
+
+yf(n): y.(round(n) + 1) | the simulated sample n
+plot yf(x) as "y[n]" for x in 0..99
+
+## Frequency response and warping
+
+On the unit circle $z = e^{j\omega}$ with $\omega = 2\pi f/f_s$ rad/sample, the digital magnitude is $|H| = |b_0 e^{j\omega} + b_1| / |e^{j\omega} + a_1|$. The analog magnitude is $\omega_c/(\Omega^2 + \omega_c^2)^{1/2}$ with $\Omega = 2\pi f$. Both are in dB below, against frequency in Hz.
+
+fs_n: fs / (1 Hz) | sample rate as a number
+fc_n: fc / (1 Hz) | cutoff as a number
+wc_n: wc * (1 s) | analog cutoff in rad/s as a number
+Hd_dB(f): 10 * log(((b0 * cos(2 * pi * f / fs_n) + b1)^2 + (b0 * sin(2 * pi * f / fs_n))^2) / ((cos(2 * pi * f / fs_n) + a1)^2 + sin(2 * pi * f / fs_n)^2)) | digital response in dB
+Ha_dB(f): 10 * log(wc_n^2 / ((2 * pi * f)^2 + wc_n^2)) | analog response in dB
+
+The two curves over 90 % of the band up to $f_s/2$ (the digital curve plunges towards minus infinity at exactly $f_s/2$, so the plot stops short of it), then zoomed in around the cutoff. The horizontal axis is the frequency in Hz and the vertical axis is the gain in dB.
+
+plot Hd_dB(x) as "digital", Ha_dB(x) as "analog" for x in 0.001..0.9 * fs_n / 2
+
+plot Hd_dB(x) as "digital", Ha_dB(x) as "analog" for x in 0.001..4 * fc_n
+
+The digital filter has a true zero at Nyquist (an infinite number of dB below), while the analog one only reaches about $-20\log_{10}(\pi f_s/\omega_c)$ there. The reason is that the transform squeezes the whole analog frequency axis $0 \ldots \infty$ onto $0 \ldots f_s/2$ through
+
+$$ \Omega = \frac{2}{T}\tan\!\left(\frac{\omega T}{2}\right) $$
+
+so an analog frequency $\Omega$ lands at the digital frequency $\omega = 2\arctan(\Omega T/2)$. The digital -3 dB point is the image of $\omega_c$:
+
+w_dig: 2 * atan(k) | digital -3 dB frequency, rad/sample
+wd_rad_s: w_dig / T -> 1/s | the same frequency in rad/s, equal to (2/T) atan(k)
+f_dig: wd_rad_s / (2 * pi) -> Hz | the same in Hz
+shift: (f_dig - fc) / fc -> % | shift of the digital cutoff from the target
+Hd_at_wd: sqrt(((b0 * cos(w_dig) + b1)^2 + (b0 * sin(w_dig))^2) / ((cos(w_dig) + a1)^2 + sin(w_dig)^2)) | digital magnitude at that frequency
+if abs(Hd_at_wd - 1 / sqrt(2)) < 0.000001: "PASS: the digital magnitude at 2 atan(k) is 0.7071, which is -3 dB." else: "FAIL: the digital -3 dB point is not at 2 atan(k)."
+
+For the base case, $\frac{2}{T}\arctan(0.05) = 20 \arctan(0.05) = 0.9992$ rad/s against the analog 1 rad/s (the sample-domain value is $0.09992$ rad/sample, and dividing by $T$ gives rad/s). That is a shift of $-0.08\%$: negligible when $f_c \ll f_s$ and growing quickly as $f_c$ approaches $f_s/2$. Tick the prewarp box, or reduce $f_s$ to 3 or 4 times $f_c$ to see both effects in the plots.
+
+## The filter as code
+
+The update equation, with the base-case numbers filled in ($b_0 = b_1 = 1/21$, $-a_1 = 19/21$):
+
+$$ y[n] = b_0 x[n] + b_1 x[n-1] - a_1 y[n-1] $$
+
+```c
+/* first-order low-pass, wc = 1 rad/s, fs = 10 Hz, bilinear transform */
+static float x_prev = 0.0f, y_prev = 0.0f;
+
+float lowpass_update(float x)
+{
+    float y = 0.047619048f * x            /* b0 = 1/21  */
+            + 0.047619048f * x_prev       /* b1 = 1/21  */
+            + 0.904761905f * y_prev;      /* -a1 = 19/21 */
+    x_prev = x;
+    y_prev = y;
+    return y;
+}
+```
+
+After a change of $f_c$ or $f_s$, replace the three constants with $b_0$, $b_1$ and $-a_1$ from the lines above. Two multiplies and two adds per sample, and no division at run time.
+
+## Explore
+
+- Slide $f_s$ down towards 4 times $f_c$ and watch the digital curve leave the analog one in the zoomed plot, with the shift line growing.
+- Tick prewarp: the shift becomes 0 and the digital curve crosses -3 dB exactly at $f_c$, at the price of a slightly different analog prototype.
+- Raise $f_c$ above $f_s/4$ and read the PASS and FAIL lines at the top.
+
+Follows the cookbook example signal_filter.rs of the symplex library (github.com/cgorski/symplex, MIT OR Apache-2.0).

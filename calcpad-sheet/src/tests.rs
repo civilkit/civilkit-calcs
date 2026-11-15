@@ -1453,7 +1453,7 @@ fn every_sample_compiles_to_what_it_did_before() {
             assert_eq!(format!("{:016x}", fnv(&all)), want[&(name.clone(), plain)], "{name} (plain {plain}) compiles differently");
         }
     }
-    assert_eq!(with_sliders, 3, "three samples use sliders (the two templates, and the panel tied to a sheet input)");
+    assert_eq!(with_sliders, 5, "five samples use sliders (the two templates, the panel tied to a sheet input, and the PID and digital filter cookbook sheets)");
 }
 
 #[test]

@@ -45,3 +45,9 @@ under the BSD 2-Clause License:
   CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE)
   ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE
   POSSIBILITY OF SUCH DAMAGE.
+
+The sample sheets named "Cookbook ..." (web/calcpad-web/public/sheet-samples/) rework the problems of the cookbook
+examples of the symplex library (https://github.com/cgorski/symplex): a PID controller, a digital filter, Lagrangian
+mechanics, a robot arm, gradient descent, RSA and polynomial inequality certificates. symplex is distributed under the
+MIT License or the Apache License 2.0, at the user's choice: Copyright (c) 2025 symplex contributors. The sheets are
+written afresh for CivilKit Calcs; only the problems and their data follow the originals, and each sheet says so.

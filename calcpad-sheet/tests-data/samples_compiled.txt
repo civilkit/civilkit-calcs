@@ -22,6 +22,20 @@ Cantilever tip load.sheet|false|5166aad35e13dad1
 Cantilever tip load.sheet|true|991790d9d365738b
 Column.sheet|false|cf79a19861c883b1
 Column.sheet|true|46e788e9222ac207
+Cookbook Lagrangian mechanics.sheet|false|aa0208521e549c20
+Cookbook Lagrangian mechanics.sheet|true|d2e78c5a83a48bee
+Cookbook PID controller.sheet|false|434d0ef87873fe91
+Cookbook PID controller.sheet|true|40d244e5e699dc07
+Cookbook RSA encryption.sheet|false|2461f709dbccf6eb
+Cookbook RSA encryption.sheet|true|4789199dc37d3acf
+Cookbook digital filter.sheet|false|5cc50d42ac2cc1b4
+Cookbook digital filter.sheet|true|40225cabab652dad
+Cookbook gradient descent.sheet|false|e58aa4541806bd30
+Cookbook gradient descent.sheet|true|bfc25d0272f2f581
+Cookbook polynomial certificates.sheet|false|ca9036bad0bb4188
+Cookbook polynomial certificates.sheet|true|b6f253ba61ef0c18
+Cookbook robot arm kinematics.sheet|false|95f28b78492b80e7
+Cookbook robot arm kinematics.sheet|true|a06e524d45caa9c2
 Diagram beam check states.sheet|false|3690123a3c5f1f9e
 Diagram beam check states.sheet|true|33ea21986ceabcb4
 Diagram beam requirements.sheet|false|8266ddb43cc92bbd

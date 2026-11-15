@@ -1,0 +1,224 @@
+<!--sheet-->
+# Gradient descent on the Rosenbrock valley
+
+Gradient descent is the simplest way to minimise a function: step downhill along the negative gradient until the steps stop mattering. It sits behind curve fitting, calibration and parameter identification, and the Rosenbrock function is the classic stress test, because its minimum lies at the end of a long, narrow, curved valley. Here the gradient is derived by hand, checked against finite differences, used to descend from a bad starting point, and then put to work on a small least-squares fit of measured data.
+
+## 1. The function and its gradient
+
+The loss is
+
+$$f(x, y) = (1 - x)^2 + 100\,(y - x^2)^2$$
+
+with its minimum $f = 0$ at $(1, 1)$. Differentiating with the chain rule, the first term gives $-2(1 - x)$ and the second gives $200\,(y - x^2)\cdot(-2x)$ in $x$ and $200\,(y - x^2)$ in $y$:
+
+$$\frac{\partial f}{\partial x} = -2\,(1 - x) - 400\,x\,(y - x^2), \qquad \frac{\partial f}{\partial y} = 200\,(y - x^2)$$
+
+f(x, y): (1 - x)^2 + 100*(y - x^2)^2
+dfdx(x, y): -2*(1 - x) - 400*x*(y - x^2)
+dfdy(x, y): 200*(y - x^2)
+
+### Check 1: the gradient vanishes at the minimum
+f_min: f(1, 1) | the loss at the minimum
+gx_min: dfdx(1, 1) | the x derivative at (1, 1)
+gy_min: dfdy(1, 1) | the y derivative at (1, 1)
+if f_min == 0 and gx_min == 0 and gy_min == 0: "PASS: loss and both partial derivatives are zero at (1, 1)" else: "FAIL: (1, 1) is not a stationary point"
+
+### Check 2: the hand derivative against central differences
+A central difference with a small step $h$ approximates a derivative with an error of order $h^2$. The test point is the starting point used below.
+
+x_s: -1 | start, x
+y_s: 2 | start, y
+h: 0.000001 | finite difference step
+fd_x: (f(x_s + h, y_s) - f(x_s - h, y_s)) / (2*h) | numerical df/dx
+fd_y: (f(x_s, y_s + h) - f(x_s, y_s - h)) / (2*h) | numerical df/dy
+gx_s: dfdx(x_s, y_s) | derived df/dx
+gy_s: dfdy(x_s, y_s) | derived df/dy
+err_g: max(abs(fd_x - gx_s), abs(fd_y - gy_s)) | largest difference
+if err_g < 0.0001: "PASS: derived gradient agrees with finite differences" else: "FAIL: derivative mistake"
+
+The loss at the start is f(-1, 2) =
+
+f_s: f(x_s, y_s) | loss at the starting point {key}
+
+## 2. Descent from (-1, 2)
+
+Each step is $\mathbf{p} \leftarrow \mathbf{p} - \eta\,\nabla f(\mathbf{p})$. The learning rate $\eta = 0.001$ is small because the valley walls are steep: the sharpest curvature of $f$ is about 800 at the start and about 1000 at the minimum, and a rate above $2/1000 = 0.002$ bounces from wall to wall and blows up. A small step is safe but slow along the valley floor, where the slope is gentle. That is why it takes tens of thousands of iterations.
+
+The loop below is plain Python lists and runs once when the sheet is calculated. It records every 50th point for the plots.
+
+```python
+import math
+import time
+import plotly.graph_objects as go
+
+def loss(x, y):
+    return (1 - x) ** 2 + 100 * (y - x * x) ** 2
+
+def grad(x, y):
+    r = y - x * x
+    return -2 * (1 - x) - 400 * x * r, 200 * r
+
+eta = 0.001
+n_max = 50000
+px, py = -1.0, 2.0
+t0 = time.time()
+path_x, path_y, path_it, path_f = [px], [py], [0], [loss(px, py)]
+snap = {}
+first_below = 0
+for i in range(1, n_max + 1):
+    gx, gy = grad(px, py)
+    px -= eta * gx
+    py -= eta * gy
+    if i % 50 == 0:
+        L = loss(px, py)
+        path_x.append(px); path_y.append(py); path_it.append(i); path_f.append(L)
+        if first_below == 0 and L < 1e-6:
+            first_below = i
+    if i in (1, 2, 3, 10, 100, 1000, 5000, 10000, 20000, 30000, 50000):
+        snap[i] = (px, py)
+secs = time.time() - t0
+
+print("iter        x          y           loss         distance")
+print("   0   %9.5f  %9.5f  %12.6f  %12.6f" % (-1.0, 2.0, loss(-1, 2), math.hypot(-2, 1)))
+for i in sorted(snap):
+    sx, sy = snap[i]
+    print("%5d   %9.5f  %9.5f  %12.4e  %12.4e" % (i, sx, sy, loss(sx, sy), math.hypot(sx - 1, sy - 1)))
+print("loop time in this browser: %.2f s for %d iterations" % (secs, n_max))
+
+# level curves of log10(1 + f); the valley floor is the parabola y = x^2
+xs = [-1.6 + 0.05 * i for i in range(61)]
+ys = [-0.4 + 0.05 * j for j in range(55)]
+Z = [[math.log10(1 + loss(a, b)) for a in xs] for b in ys]
+fig = go.Figure()
+fig.add_trace(go.Contour(x=xs, y=ys, z=Z, ncontours=14, showscale=False, colorscale="Blues", opacity=0.75,
+                         contours=dict(coloring="lines"), line=dict(width=1), name="log10(1 + f)"))
+fig.add_trace(go.Scatter(x=path_x, y=path_y, mode="lines", line=dict(color="#e07000", width=2), name="descent path"))
+fig.add_trace(go.Scatter(x=[-1, 1], y=[2, 1], mode="markers+text", text=["start", "minimum"], textposition=["top right", "top left"],
+                         marker=dict(size=10, color=["#888888", "#2ca02c"]), name="start and minimum"))
+fig.update_layout(height=430, margin=dict(l=56, r=16, t=30, b=44), xaxis_title="x", yaxis_title="y",
+                  title="Path of 50,000 steps over the contours of the loss", legend=dict(orientation="h", y=-0.2))
+fig.show()
+
+fig2 = go.Figure(go.Scatter(x=path_it[1:], y=path_f[1:], mode="lines", name="loss"))
+fig2.update_layout(height=320, margin=dict(l=56, r=16, t=30, b=44), xaxis_title="iteration", yaxis_title="loss f",
+                   yaxis_type="log", yaxis_exponentformat="power", title="Loss against iteration (log axis)")
+fig2.show()
+
+export(xfin=px)
+export(yfin=py)
+export(ffin=loss(px, py))
+export(n_tol=first_below)
+```
+
+### Check 3: did it arrive?
+The distance to the known minimum, after 50,000 iterations:
+
+dist: sqrt((xfin - 1)^2 + (yfin - 1)^2) | distance to (1, 1) {key}
+if dist < 0.000001: "PASS: within 1e-6 of the minimum" else: "FAIL: not converged"
+if ffin < 0.000000000001: "PASS: loss below 1e-12" else: "FAIL: loss still large"
+n_first: n_tol | first recorded iteration with loss below 1e-6 (checked every 50 steps) {key}
+
+The path drops quickly into the valley, wanders slowly along it and creeps into the minimum: the loss falls steeply at first and then almost in a straight line on the log axis, which is the signature of a fixed learning rate on a badly scaled problem.
+
+## 3. Interactive: learning rate and iterations
+
+Move the sliders and the path is redrawn from the same start. A rate near 0.002 zig-zags across the valley and above 0.0021 the iteration diverges; a low rate barely leaves the start. The readout is the distance to (1, 1) after the chosen number of iterations.
+
+```python
+import ui
+
+lr = ui.slider("lr", 0.001, 0.0002, 0.0022, step=0.0001, label="Learning rate")
+nit = ui.slider("nit", 5000, 100, 20000, step=100, label="Iterations")
+
+@ui.panel(lr, nit)
+def descent(lr, nit):
+    qx, qy = -1.0, 2.0
+    ox, oy = [qx], [qy]
+    for i in range(1, int(nit) + 1):
+        gx, gy = grad(qx, qy)
+        qx -= lr * gx
+        qy -= lr * gy
+        if abs(qx) > 1e3 or abs(qy) > 1e3:
+            break
+        if i % 20 == 0:
+            ox.append(qx); oy.append(qy)
+    f2 = go.Figure()
+    f2.add_trace(go.Contour(x=xs, y=ys, z=Z, ncontours=14, showscale=False, colorscale="Blues", opacity=0.75,
+                            contours=dict(coloring="lines"), line=dict(width=1), name="log10(1 + f)"))
+    f2.add_trace(go.Scatter(x=ox, y=oy, mode="lines", line=dict(color="#e07000", width=2), name="path"))
+    f2.add_trace(go.Scatter(x=[1], y=[1], mode="markers", marker=dict(size=10, color="#2ca02c"), name="minimum"))
+    f2.update_layout(height=400, margin=dict(l=56, r=16, t=16, b=44), xaxis_title="x", yaxis_title="y",
+                     xaxis_range=[-1.6, 1.4], yaxis_range=[-0.4, 2.3], legend=dict(orientation="h", y=-0.2))
+    d = math.hypot(qx - 1, qy - 1)
+    if abs(qx) > 1e3 or abs(qy) > 1e3:
+        return [f2, "Diverged: the rate %.4f is above the stability limit of about 0.002." % lr]
+    return [f2, "After %d iterations at rate %.4f: (%.4f, %.4f), distance %.3g, loss %.3g" % (nit, lr, qx, qy, d, loss(qx, qy))]
+```
+
+## 4. A second use: fitting a line to measurements
+
+The same machinery fits a model to data. A load cell is calibrated against known weights: eight loads $P$ (in units of 10 kN) and the deflection $\delta$ (mm) read from a dial gauge. The model is $\delta = k\,P + c$ and the quantity to minimise is the mean squared error
+
+$$E(k, c) = \frac{1}{n}\sum_i (k P_i + c - \delta_i)^2, \qquad \frac{\partial E}{\partial k} = \frac{2}{n}\sum_i (k P_i + c - \delta_i)\,P_i, \qquad \frac{\partial E}{\partial c} = \frac{2}{n}\sum_i (k P_i + c - \delta_i)$$
+
+Least squares has a closed form (the normal equations), so the descent can be checked exactly. Working in units of 10 kN keeps the problem well scaled; with loads in kN the same descent needs a much smaller rate and many more iterations, which is the Rosenbrock lesson again.
+
+```python
+P = [1, 2, 3, 4, 5, 6, 7, 8]
+D = [2.31, 3.05, 3.98, 5.10, 5.93, 6.98, 7.95, 9.04]
+n = len(P)
+
+# closed form: normal equations
+sp, sd = sum(P), sum(D)
+spp = sum(a * a for a in P)
+spd = sum(a * b for a, b in zip(P, D))
+k_ls = (n * spd - sp * sd) / (n * spp - sp * sp)
+c_ls = (sd - k_ls * sp) / n
+
+# gradient descent from k = 0, c = 0
+k, c = 0.0, 0.0
+rate = 0.02
+steps = 3000
+t1 = time.time()
+for i in range(steps):
+    ek = 0.0
+    ec = 0.0
+    for a, b in zip(P, D):
+        e = k * a + c - b
+        ek += e * a
+        ec += e
+    k -= rate * 2 * ek / n
+    c -= rate * 2 * ec / n
+t_fit = time.time() - t1
+print("closed form:      k = %.6f   c = %.6f" % (k_ls, c_ls))
+print("gradient descent: k = %.6f   c = %.6f   (%d steps, rate %.2f, %.3f s)" % (k, c, steps, rate, t_fit))
+
+fit = go.Figure()
+fit.add_trace(go.Scatter(x=P, y=D, mode="markers", marker=dict(size=9), name="measured"))
+fit.add_trace(go.Scatter(x=[0, 9], y=[c_ls, c_ls + 9 * k_ls], mode="lines", name="closed form"))
+fit.add_trace(go.Scatter(x=[0, 9], y=[c, c + 9 * k], mode="lines", line=dict(dash="dot", width=3), name="gradient descent"))
+fit.update_layout(height=320, margin=dict(l=56, r=16, t=16, b=44), xaxis_title="load P (10 kN)",
+                  yaxis_title="deflection (mm)", legend=dict(orientation="h", y=-0.25))
+fit.show()
+
+export(k_ls=k_ls)
+export(c_ls=c_ls)
+export(k_gd=k)
+export(c_gd=c)
+```
+
+### Check 4: descent against the closed form
+dk: abs(k_gd - k_ls) | difference in slope
+dc: abs(c_gd - c_ls) | difference in intercept
+if dk < 0.000001 and dc < 0.000001: "PASS: gradient descent reproduces the least squares line" else: "FAIL: fits differ"
+slope: k_ls | slope, mm per 10 kN {key}
+intercept: c_ls | intercept, mm {key}
+
+## What to change
+- Move the start from (-1, 2) to (0, 0), or set `eta` in section 2 to 0.0025 and watch the loss blow up.
+- In the panel, drag the rate to 0.002 (the path zig-zags and has not settled after 20,000 steps) and then to 0.0022 (it diverges).
+- Take logarithms of both columns of the data (replace `P` by `ln P` and `D` by `ln D`) and the same loop fits a power law $\delta = a\,P^b$.
+- Add a fifth check that compares the descent with 100,000 iterations; the Python limit is 10 s per block.
+
+## Source
+Follows the cookbook example gradient_descent.rs of the symplex library (github.com/cgorski/symplex, MIT OR Apache-2.0).

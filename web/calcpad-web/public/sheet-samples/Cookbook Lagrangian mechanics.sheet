@@ -1,0 +1,259 @@
+<!--sheet-->
+# Lagrangian mechanics: pendulum and double pendulum
+
+The equations of motion of a mechanism come from two energies, kinetic $T$ and potential $V$, through the Euler-Lagrange equations. An engineer cares because the same recipe gives the joint torques of a robot arm, the inertia matrix a controller needs and the gravity load a motor must hold. Here the equations are derived by hand, written out, and then **checked numerically from $T$ and $V$ alone**, so nothing rests on the algebra being right.
+
+Angles are measured from the downward vertical, in radians (the next line switches the engine's trig functions from degrees to radians), and torques $\tau$ are the generalised forces that drive each angle.
+
+>> #rad
+
+## 1. Simple pendulum
+
+A point mass $m$ on a massless rod of length $L$:
+
+$$T = \tfrac12 m L^2 \dot q^2, \qquad V = -m g L \cos q$$
+
+The Euler-Lagrange equation $\frac{d}{dt}\frac{\partial T}{\partial \dot q} - \frac{\partial T}{\partial q} + \frac{\partial V}{\partial q} = \tau$ gives
+
+$$\tau = \underbrace{m L^2}_{M}\,\ddot q + \underbrace{m g L \sin q}_{g(q)}$$
+
+so the mass matrix is the single number $M = mL^2$ and the gravity term is $g(q) = mgL\sin q$.
+
+mb: 1 kg | bob mass
+L: 1 m | rod length
+g_acc: 10 m/s^2 | gravity (rounded so the numbers are easy to compare)
+qdd: 1/s^2 | angular acceleration
+M0: mb * L^2 -> kg*m^2 | mass matrix (1 by 1)
+q: 0; tau_rest: M0 * qdd + mb * g_acc * L * sin(q) -> N*m | hanging straight down: gravity does not contribute
+q: 1; tau_q1: M0 * qdd + mb * g_acc * L * sin(q) -> N*m | at q = 1 rad
+q: pi / 4; tau_45: M0 * qdd + mb * g_acc * L * sin(q) -> N*m | at 45 degrees, gravity adds $mgL\sin 45^\circ$
+
+if abs(tau_rest - 1 N*m) < 1e-9 N*m: "PASS: at rest the torque is 1.00 N*m, inertia only" else: "FAIL: expected 1.00 N*m"
+
+The gravity torque against angle, for these values:
+
+tg(x): 10 * sin(x) | gravity torque in N*m for m = 1 kg, L = 1 m
+
+plot tg(x) for x in -pi..pi
+
+## 2. Double pendulum
+
+Two point masses, $m_1$ at the end of link 1 (length $L_1$) and $m_2$ at the end of link 2 (length $L_2$), joint angles $q_1$ and $q_2$ both from the downward vertical. The second mass moves with the first, so its speed squared is $L_1^2\dot q_1^2 + L_2^2\dot q_2^2 + 2L_1L_2\dot q_1\dot q_2\cos(q_1-q_2)$. Then
+
+$$T = \tfrac12 (m_1+m_2) L_1^2 \dot q_1^2 + \tfrac12 m_2 L_2^2 \dot q_2^2 + m_2 L_1 L_2 \dot q_1 \dot q_2 \cos(q_1 - q_2)$$
+
+$$V = -(m_1+m_2)\, g L_1 \cos q_1 - m_2\, g L_2 \cos q_2$$
+
+Differentiating twice in $\dot q$ gives the mass matrix, which is symmetric because it is a second derivative:
+
+$$M(q) = \begin{bmatrix} (m_1+m_2)L_1^2 & m_2L_1L_2\cos(q_1-q_2) \\ m_2L_1L_2\cos(q_1-q_2) & m_2L_2^2 \end{bmatrix}$$
+
+The gravity vector is $\partial V/\partial q$, and the velocity terms collect into $C(q,\dot q)\dot q$ with $h = m_2L_1L_2\sin(q_1-q_2)$:
+
+$$g(q) = \begin{bmatrix} (m_1+m_2) g L_1 \sin q_1 \\ m_2 g L_2 \sin q_2 \end{bmatrix}, \qquad C = \begin{bmatrix} 0 & h\,\dot q_2 \\ -h\,\dot q_1 & 0 \end{bmatrix}$$
+
+The two equations of motion, $M\ddot q + C\dot q + g = \tau$, written out:
+
+$$\tau_1 = (m_1+m_2)L_1^2\ddot q_1 + m_2L_1L_2\cos(q_1-q_2)\,\ddot q_2 + m_2L_1L_2\sin(q_1-q_2)\,\dot q_2^2 + (m_1+m_2) g L_1\sin q_1$$
+
+$$\tau_2 = m_2L_1L_2\cos(q_1-q_2)\,\ddot q_1 + m_2L_2^2\,\ddot q_2 - m_2L_1L_2\sin(q_1-q_2)\,\dot q_1^2 + m_2 g L_2\sin q_2$$
+
+### Numbers at rest, both links hanging
+
+m1: 1 kg; m2: 1 kg | link masses
+L1: 1 m; L2: 1 m | link lengths
+q1: 0; q2: 0 | both links hanging straight down
+M11: (m1 + m2) * L1^2 -> kg*m^2
+M12: m2 * L1 * L2 * cos(q1 - q2) -> kg*m^2
+M21: m2 * L1 * L2 * cos(q1 - q2) -> kg*m^2
+M22: m2 * L2^2 -> kg*m^2
+Mmat: [M11, M12; M21, M22] | mass matrix at this pose
+detM: M11 * M22 - M12 * M21 -> kg^2*m^4 | positive, so M is positive definite
+qd1: 0/s; qd2: 0/s | at rest
+qdd1: 1/s^2; qdd2: 0/s^2
+h_c: m2 * L1 * L2 * sin(q1 - q2) -> kg*m^2
+tau1: M11 * qdd1 + M12 * qdd2 + h_c * qd2^2 + (m1 + m2) * g_acc * L1 * sin(q1) -> N*m {key}
+tau2: M21 * qdd1 + M22 * qdd2 - h_c * qd1^2 + m2 * g_acc * L2 * sin(q2) -> N*m {key}
+
+if abs(M12 - M21) < 1e-12 kg*m^2: "PASS: the mass matrix is symmetric" else: "FAIL: the mass matrix is not symmetric"
+if detM > 0 kg^2*m^4: "PASS: det M is positive" else: "FAIL: det M is not positive"
+if abs(tau1 - 2 N*m) < 1e-9 N*m and abs(tau2 - 1 N*m) < 1e-9 N*m: "PASS: tau = (2, 1) N*m, the reference values for this pose" else: "FAIL: tau differs from (2, 1) N*m"
+
+## 3. Check the derivation numerically
+
+The block below knows only $T$ and $V$. It forms $L = T - V$, takes $p_i = \partial L/\partial\dot q_i$ by central differences, differentiates $p_i$ along a smooth test trajectory (fourth order central difference in time), subtracts $\partial L/\partial q_i$ by central differences, and compares with the hand-written equations above evaluated on the same trajectory. It also builds $M$ as the finite-difference Hessian of $T$ in $\dot q$.
+
+```python
+import math
+
+m1_, m2_, L1_, L2_, g_ = 1.3, 0.8, 1.1, 0.7, 9.81
+
+def T(q1, q2, v1, v2):
+    return (0.5 * (m1_ + m2_) * L1_**2 * v1**2 + 0.5 * m2_ * L2_**2 * v2**2
+            + m2_ * L1_ * L2_ * v1 * v2 * math.cos(q1 - q2))
+
+def V(q1, q2):
+    return -(m1_ + m2_) * g_ * L1_ * math.cos(q1) - m2_ * g_ * L2_ * math.cos(q2)
+
+def Lag(q1, q2, v1, v2):
+    return T(q1, q2, v1, v2) - V(q1, q2)
+
+def traj(t):
+    q1 = 0.7 * math.sin(1.1 * t) + 0.2
+    q2 = 0.5 * math.cos(0.8 * t) - 0.3
+    v1 = 0.7 * 1.1 * math.cos(1.1 * t)
+    v2 = -0.5 * 0.8 * math.sin(0.8 * t)
+    a1 = -0.7 * 1.1**2 * math.sin(1.1 * t)
+    a2 = -0.5 * 0.8**2 * math.cos(0.8 * t)
+    return q1, q2, v1, v2, a1, a2
+
+def momenta(t):
+    q1, q2, v1, v2, _, _ = traj(t)
+    e = 1e-4
+    p1 = (Lag(q1, q2, v1 + e, v2) - Lag(q1, q2, v1 - e, v2)) / (2 * e)
+    p2 = (Lag(q1, q2, v1, v2 + e) - Lag(q1, q2, v1, v2 - e)) / (2 * e)
+    return p1, p2
+
+def tau_numeric(t):
+    q1, q2, v1, v2, _, _ = traj(t)
+    h = 1e-2
+    f = [momenta(t + k * h) for k in (-2, -1, 1, 2)]
+    dp = [(-f[3][i] + 8 * f[2][i] - 8 * f[1][i] + f[0][i]) / (12 * h) for i in (0, 1)]
+    e = 1e-5
+    dq1 = (Lag(q1 + e, q2, v1, v2) - Lag(q1 - e, q2, v1, v2)) / (2 * e)
+    dq2 = (Lag(q1, q2 + e, v1, v2) - Lag(q1, q2 - e, v1, v2)) / (2 * e)
+    return dp[0] - dq1, dp[1] - dq2
+
+def tau_hand(t):
+    q1, q2, v1, v2, a1, a2 = traj(t)
+    c, s = math.cos(q1 - q2), math.sin(q1 - q2)
+    k = m2_ * L1_ * L2_
+    t1 = (m1_ + m2_) * L1_**2 * a1 + k * c * a2 + k * s * v2**2 + (m1_ + m2_) * g_ * L1_ * math.sin(q1)
+    t2 = k * c * a1 + m2_ * L2_**2 * a2 - k * s * v1**2 + m2_ * g_ * L2_ * math.sin(q2)
+    return t1, t2
+
+res = 0.0
+for i in range(13):
+    t = 0.25 * i
+    a, b = tau_numeric(t), tau_hand(t)
+    res = max(res, abs(a[0] - b[0]), abs(a[1] - b[1]))
+
+# mass matrix as the Hessian of T in the velocities, at one pose
+q1, q2, e = 0.6, -0.4, 1e-3
+H11 = (T(q1, q2, e, 0) - 2 * T(q1, q2, 0, 0) + T(q1, q2, -e, 0)) / e**2
+H22 = (T(q1, q2, 0, e) - 2 * T(q1, q2, 0, 0) + T(q1, q2, 0, -e)) / e**2
+H12 = (T(q1, q2, e, e) - T(q1, q2, e, -e) - T(q1, q2, -e, e) + T(q1, q2, -e, -e)) / (4 * e**2)
+H21 = (T(q1, q2, e, e) - T(q1, q2, -e, e) - T(q1, q2, e, -e) + T(q1, q2, -e, -e)) / (4 * e**2)
+c = math.cos(q1 - q2)
+mass_err = max(abs(H11 - (m1_ + m2_) * L1_**2), abs(H22 - m2_ * L2_**2),
+               abs(H12 - m2_ * L1_ * L2_ * c), abs(H21 - m2_ * L1_ * L2_ * c))
+sym_err = abs(H12 - H21)
+print("max Euler-Lagrange residual over 13 times: %.3e N*m" % res)
+print("mass matrix from the Hessian of T, largest error: %.3e kg*m^2" % mass_err)
+export(EL_res=res, mass_err=mass_err, sym_err=sym_err)
+```
+
+if EL_res < 1e-6: "PASS: the hand-derived equations satisfy Euler-Lagrange from T and V (residual below 1e-6 N*m)" else: "FAIL: Euler-Lagrange residual too large"
+if mass_err < 1e-6: "PASS: M(q) equals the Hessian of T in the velocities" else: "FAIL: mass matrix mismatch"
+if sym_err < 1e-6: "PASS: the numerical Hessian is symmetric" else: "FAIL: numerical Hessian not symmetric"
+
+## 4. Simulation and energy check
+
+With $\tau = 0$ the motion follows from $\ddot q = M^{-1}(-C\dot q - g)$. The block integrates it with fourth order Runge-Kutta, $m_1=m_2=1$ kg, $L_1=L_2=1$ m, $g=9.81$ m/s$^2$, released from $q_1 = 2$ rad and $q_2 = 1$ rad at rest, for 10 s at a step of 2 ms. A conservative system keeps $E = T + V$ constant, so the drift is a direct measure of the integration error.
+
+```python
+import math
+import plotly.graph_objects as go
+from plotly.subplots import make_subplots
+
+M1, M2, A1, A2, G = 1.0, 1.0, 1.0, 1.0, 9.81
+
+def accel(s):
+    q1, q2, v1, v2 = s
+    c, sn = math.cos(q1 - q2), math.sin(q1 - q2)
+    k = M2 * A1 * A2
+    m11, m12, m22 = (M1 + M2) * A1**2, k * c, M2 * A2**2
+    r1 = -(k * sn * v2**2 + (M1 + M2) * G * A1 * math.sin(q1))
+    r2 = k * sn * v1**2 - M2 * G * A2 * math.sin(q2)
+    d = m11 * m22 - m12 * m12
+    return [(r1 * m22 - m12 * r2) / d, (m11 * r2 - m12 * r1) / d]
+
+def f(s):
+    a = accel(s)
+    return [s[2], s[3], a[0], a[1]]
+
+def rk4(s, dt):
+    k1 = f(s)
+    k2 = f([s[i] + 0.5 * dt * k1[i] for i in range(4)])
+    k3 = f([s[i] + 0.5 * dt * k2[i] for i in range(4)])
+    k4 = f([s[i] + dt * k3[i] for i in range(4)])
+    return [s[i] + dt / 6 * (k1[i] + 2 * k2[i] + 2 * k3[i] + k4[i]) for i in range(4)]
+
+def energy(s):
+    q1, q2, v1, v2 = s
+    kin = (0.5 * (M1 + M2) * A1**2 * v1**2 + 0.5 * M2 * A2**2 * v2**2
+           + M2 * A1 * A2 * v1 * v2 * math.cos(q1 - q2))
+    pot = -(M1 + M2) * G * A1 * math.cos(q1) - M2 * G * A2 * math.cos(q2)
+    return kin + pot
+
+dt, nsteps, every = 0.002, 5000, 10
+s = [2.0, 1.0, 0.0, 0.0]
+E0 = energy(s)
+ts, Q1, Q2, drift = [0.0], [s[0]], [s[1]], [0.0]
+worst = 0.0
+for n in range(1, nsteps + 1):
+    s = rk4(s, dt)
+    if n % every == 0:
+        e = abs(energy(s) - E0)
+        worst = max(worst, e)
+        ts.append(n * dt); Q1.append(s[0]); Q2.append(s[1]); drift.append(e)
+print("initial energy %.4f J, largest drift %.3e J over %g s" % (E0, worst, nsteps * dt))
+export(E0_J=E0, drift_J=worst, sim_T=nsteps * dt)
+
+fig = make_subplots(rows=2, cols=1, shared_xaxes=True, subplot_titles=["Joint angles", "Energy drift |E - E0|"])
+fig.add_trace(go.Scatter(x=ts, y=Q1, name="q1 (rad)"), row=1, col=1)
+fig.add_trace(go.Scatter(x=ts, y=Q2, name="q2 (rad)"), row=1, col=1)
+fig.add_trace(go.Scatter(x=ts, y=drift, name="drift (J)"), row=2, col=1)
+fig.update_layout(height=480, xaxis2_title="t (s)", margin=dict(l=56, r=16, t=40, b=44))
+fig.update_yaxes(type="log", row=2, col=1)
+fig.show()
+```
+
+if drift_J < 1e-4: "PASS: energy drift stays below 1e-4 J over 10 s (E0 is about 2.9 J)" else: "FAIL: energy drift is too large, reduce the step"
+
+## 5. Watch it move
+
+The panel replays the simulation above. Press Play, or drag the frame. The arm is drawn from the pivot, the second bob leaves a trail of its last 2.4 s, and the title reports the energy error at that frame.
+
+```python
+import ui
+
+arm_t = [i * 0.02 for i in range(len(Q1))]
+FR = len(Q1) - 1
+frame = ui.player("fr", 0, FR, fps=25, label="Frame (20 ms each)")
+
+@ui.panel(frame)
+def arm(fr):
+    x1 = A1 * math.sin(Q1[fr]); y1 = -A1 * math.cos(Q1[fr])
+    x2 = x1 + A2 * math.sin(Q2[fr]); y2 = y1 - A2 * math.cos(Q2[fr])
+    lo = max(0, fr - 120)
+    tx = [A1 * math.sin(Q1[i]) + A2 * math.sin(Q2[i]) for i in range(lo, fr + 1)]
+    ty = [-A1 * math.cos(Q1[i]) - A2 * math.cos(Q2[i]) for i in range(lo, fr + 1)]
+    fig = go.Figure()
+    fig.add_trace(go.Scatter(x=tx, y=ty, mode="lines", name="trail", line=dict(width=2, color="#e07000")))
+    fig.add_trace(go.Scatter(x=[0, x1, x2], y=[0, y1, y2], mode="lines+markers", name="arm",
+                             line=dict(width=4, color="#1f77b4"), marker=dict(size=[8, 14, 14])))
+    fig.update_layout(height=420, margin=dict(l=48, r=16, t=16, b=44), showlegend=False,
+                      xaxis=dict(range=[-2.2, 2.2], title="x (m)", scaleanchor="y", scaleratio=1),
+                      yaxis=dict(range=[-2.2, 2.2], title="y (m)"))
+    return [fig, "t = %.2f s, q1 = %.2f rad, q2 = %.2f rad, energy error %.1e J" % (arm_t[fr], Q1[fr], Q2[fr], drift[fr])]
+```
+
+## What to change
+
+- Link masses and lengths: edit `m1_`, `m2_`, `L1_`, `L2_` in section 3 and `M1`, `M2`, `A1`, `A2` in section 4. The Euler-Lagrange residual stays at round-off level for any values, which is the point of the check.
+- Release angles: edit `s = [2.0, 1.0, 0.0, 0.0]`. Small angles give a regular motion, large ones the familiar chaotic one.
+- Step size: raise `dt` to 0.01 and watch the energy drift grow by roughly four orders of magnitude (fourth order method).
+- Pose and acceleration in section 2: change `q1`, `q2`, `qdd1`, `qdd2` and the torques follow.
+
+Follows the cookbook example dynamics.rs of the symplex library (github.com/cgorski/symplex, MIT OR Apache-2.0).
