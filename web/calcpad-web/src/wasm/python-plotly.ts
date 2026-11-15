@@ -58,7 +58,7 @@ const LIVE = /<div class="cprs-plotly" data-fig="[A-Za-z0-9+/=]*"><\/div>/g;
 
 /** True when the page holds a figure from a Python block. */
 export function hasPlotlyFigure(html: string): boolean {
-    return html.includes('<div class="cprs-plotly" data-fig="');
+    return html.includes('<div class="cprs-plotly" data-fig="') || html.includes(' data-plotly="1"');
 }
 
 /** The page without the empty chart containers, for Word and Excel: the note under each stays. */
@@ -85,7 +85,7 @@ scene:{bgcolor:none,xaxis:ax3,yaxis:ax3,zaxis:ax3},legend:{bgcolor:none},hoverla
 modebar:{bgcolor:none,color:line,activecolor:acc},
 updatemenudefaults:{bgcolor:box,bordercolor:line,font:{color:fg}},
 sliderdefaults:{bgcolor:grid,bordercolor:line,tickcolor:line,activebgcolor:acc,font:{color:fg}}}};}
-window.cprsTheme=function(){return theme(dark());};window.cprsMerge=merge;
+window.cprsTheme=function(){return theme(dark());};window.cprsThemeFor=theme;window.cprsMerge=merge;
 function utf8(b){var s=atob(b),a=new Uint8Array(s.length);for(var i=0;i<s.length;i++)a[i]=s.charCodeAt(i);return new TextDecoder().decode(a);}
 function hash(s){var h=5381;for(var i=0;i<s.length;i++){h=((h<<5)+h+s.charCodeAt(i))|0;}return (h>>>0).toString(16);}
 function snap(el){

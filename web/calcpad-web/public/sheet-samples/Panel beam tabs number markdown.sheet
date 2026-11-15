@@ -1,0 +1,40 @@
+<!--sheet-->
+# Beam diagrams (number boxes, a button, tabs and Markdown)
+
+A simply supported beam. Type a span and a load in the number boxes (the value is taken when you press Enter or leave the box), and press **Next load case** to step through three cases: the uniform load alone, with a point load at mid-span, and with two point loads at the third points. The diagrams are two tabs, and the summary above them is Markdown. Only the panel's function runs again; the rest of the sheet is not recalculated.
+
+```python
+import ui
+
+L = ui.number("L", 6, 1, 20, step=0.5, unit="m", label="Span")
+w = ui.number("w", 12, 1, 80, unit="kN/m", label="Uniform load")
+case = ui.button("case", "Next load case")
+
+NAMES = ["Uniform load only", "Uniform load and a point load at mid-span", "Uniform load and two point loads at the third points"]
+
+@ui.panel(L, w, case)
+def beam(L, w, case):
+    k = case % 3
+    P = [0.0, 20.0, 15.0][k]
+    n = 60
+    xs = [L * i / n for i in range(n + 1)]
+    V, M = [], []
+    for x in xs:
+        v = w * (L / 2 - x)
+        m = w * x * (L - x) / 2
+        if k == 1:
+            v += P / 2 if x < L / 2 else -P / 2
+            m += P * x / 2 if x < L / 2 else P * (L - x) / 2
+        elif k == 2:
+            v += P if x < L / 3 else (0 if x <= 2 * L / 3 else -P)
+            m += P * x if x < L / 3 else (P * L / 3 if x <= 2 * L / 3 else P * (L - x))
+        V.append(v)
+        M.append(m)
+    mmax = max(M)
+    summary = "### Load case %d of 3: %s\n- Maximum moment **%.1f kN.m** at x = %.2f m\n- Maximum shear **%.1f kN** at the supports\n- Press *Next load case* for the next one." % (k + 1, NAMES[k].lower(), mmax, xs[M.index(mmax)], max(V))
+    rows = [["Span", "%.2f m" % L], ["Uniform load", "%.1f kN/m" % w], ["Point load", "none" if P == 0 else "%.0f kN" % P]]
+    return [ui.markdown(summary),
+            ui.tabs(("Bending moment", ui.plot(xs, M, xlabel="x (m)", ylabel="M (kN.m)")),
+                    ("Shear force", ui.plot(xs, V, xlabel="x (m)", ylabel="V (kN)"))),
+            ui.row(ui.table(rows, header=["Quantity", "Value"]), "Diagrams drawn at 60 points along the span.")]
+```

@@ -6,6 +6,8 @@
 //   #python                a line holding only this (any case, surrounding blanks allowed) opens a block
 //   #end python            a line holding only this closes it; no nesting; a block left open runs to the end
 
+import { markdownToHtml } from './python-markdown';
+
 export interface PyBlock {
     /** 0-based line of `#python`. */
     start: number;
@@ -102,18 +104,33 @@ export function plotlyMarkup(figureJson: string, title: string): string {
 }
 
 interface PanelWidgetSpec { kind: string; name: string; label: string; value: number | boolean; unit?: string; options?: string[] }
-type PanelItem = { t: 'plotly'; fig: unknown } | { t: 'text'; s: string } | { t: 'table'; head: string[] | null; rows: string[][] };
+export type PanelItem =
+    | { t: 'plotly'; fig: unknown } | { t: 'text'; s: string } | { t: 'table'; head: string[] | null; rows: string[][] }
+    | { t: 'md'; s: string } | { t: 'html'; h: string } | { t: 'same' }
+    | { t: 'row' | 'col'; items: PanelItem[] } | { t: 'tabs'; tabs: { label: string; items: PanelItem[] }[] };
 
 /** What a widget shows as text: `L = 6 m`, `material = Steel`, `ribs = yes`. */
 export function panelWidgetText(w: PanelWidgetSpec): string {
     if (w.kind === 'select') return `${w.label} = ${w.options?.[w.value as number] ?? w.value}`;
     if (w.kind === 'checkbox') return `${w.label} = ${w.value ? 'yes' : 'no'}`;
+    if (w.kind === 'button') return `${w.label}: pressed ${w.value} time${w.value === 1 ? '' : 's'}`;
     return `${w.label} = ${w.value}${w.unit ? ` ${w.unit}` : ''}`;
 }
 
 /** One panel output as static markup: this is what print, Word and Excel carry, and what the page shows before it is scripted. */
 function panelItemMarkup(it: PanelItem): string {
+    if (it.t === 'same') return '';
     if (it.t === 'text') return `<p class="cprs-panel-text" style="margin:4pt 0">${escapeHtml(it.s).replace(/\n/g, '&#10;')}</p>`;
+    if (it.t === 'md') return `<div class="cprs-panel-md" style="margin:4pt 0">${markdownToHtml(it.s)}</div>`;
+    if (it.t === 'html') return `<div class="cprs-panel-md" style="margin:4pt 0">${it.h}</div>`;
+    if (it.t === 'row') return `<div class="cprs-row" style="display:flex;flex-wrap:wrap;gap:8pt">${it.items.map(panelItemMarkup).join('')}</div>`;
+    if (it.t === 'col') return `<div class="cprs-col">${it.items.map(panelItemMarkup).join('')}</div>`;
+    if (it.t === 'tabs') {
+        const labels = it.tabs.map((x) => x.label).join('|');
+        return `<div class="cprs-tabs" data-labels="${escapeHtml(labels)}">${it.tabs.map((x) =>
+            `<div class="cprs-tabpanel" data-label="${escapeHtml(x.label)}"><p class="cprs-tabhead" style="margin:6pt 0 2pt"><b>${escapeHtml(x.label)}</b></p>`
+            + `<div class="cprs-tabbody">${x.items.map(panelItemMarkup).join('')}</div></div>`).join('')}</div>`;
+    }
     if (it.t === 'table') {
         const head = it.head ? `<thead><tr>${it.head.map((h) => `<th>${escapeHtml(h)}</th>`).join('')}</tr></thead>` : '';
         const rows = it.rows.map((r) => `<tr>${r.map((c) => `<td>${escapeHtml(c)}</td>`).join('')}</tr>`).join('');
@@ -124,18 +141,28 @@ function panelItemMarkup(it: PanelItem): string {
     return plotlyMarkup(JSON.stringify(it.fig), typeof t === 'string' ? t : '');
 }
 
+/** The items a panel answer holds, with Markdown turned into markup (done by the host; the frame inserts only what it is given). */
+export function resolvePanelItems(items: PanelItem[]): PanelItem[] {
+    return items.map((it): PanelItem => {
+        if (it.t === 'md') return { t: 'html', h: markdownToHtml(it.s) };
+        if (it.t === 'row' || it.t === 'col') return { t: it.t, items: resolvePanelItems(it.items) };
+        if (it.t === 'tabs') return { t: 'tabs', tabs: it.tabs.map((x) => ({ label: x.label, items: resolvePanelItems(x.items) })) };
+        return it;
+    });
+}
+
 /**
  * An interactive panel (public/py/lib/ui.py, docs/interactive-panels-design.md). The markup is the panel at the values it was
  * calculated with: an empty container for the widgets (python-panels.ts draws them), the first output as static markup, and a
  * note that print and export keep. The spec travels as base64, so nothing in it can be read as Calcpad or HTML.
  */
 export function panelMarkup(panelJson: string, runKey: string): string {
-    let spec: { id: string; widgets: PanelWidgetSpec[]; first: { out: PanelItem[] } };
+    let spec: { id: string; widgets: PanelWidgetSpec[]; plotly?: boolean; first: { out: PanelItem[] } };
     try { spec = JSON.parse(panelJson); } catch { return '<p><span class="err">Python error: the panel could not be read.</span></p>'; }
     const out = spec.first.out.map(panelItemMarkup).join('');
     const note = `Interactive panel ${escapeHtml(spec.id)}: ${spec.widgets.map((w) => escapeHtml(panelWidgetText(w))).join(', ')}. It is drawn in the browser; print and export show it at these values.`;
     const wire = JSON.stringify({ id: spec.id, widgets: spec.widgets, types: spec.first.out.map((o) => o.t) });
-    return `<div class="cprs-panel" data-panel="${escapeHtml(spec.id)}" data-run="${escapeHtml(runKey)}" data-spec="${base64Utf8(wire)}" style="margin:6pt 0">`
+    return `<div class="cprs-panel" data-panel="${escapeHtml(spec.id)}" data-run="${escapeHtml(runKey)}"${spec.plotly ? ' data-plotly="1"' : ''} data-spec="${base64Utf8(wire)}" style="margin:6pt 0">`
         + `<div class="cprs-panel-ui"></div><div class="cprs-panel-out">${out}</div>`
         + `<p class="cprs-panel-note" style="${NOTE_STYLE}">${note}</p></div>`;
 }

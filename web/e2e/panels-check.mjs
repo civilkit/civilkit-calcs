@@ -5,7 +5,7 @@
 // choose widget values. Light and dark, desktop and phone screenshots go to --out.
 //   PLAYWRIGHT_BROWSERS_PATH=... node e2e/panels-check.mjs [--url U] [--out DIR]
 // The chart checks load Plotly.js from its CDN and are skipped, with a line saying so, when there is no network.
-import { chromium } from 'playwright';
+import * as pw from 'playwright';
 import { mkdirSync, readFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join, dirname } from 'node:path';
@@ -18,12 +18,15 @@ const samples = join(dirname(fileURLToPath(import.meta.url)), '../calcpad-web/pu
 mkdirSync(out, { recursive: true });
 const fails = [];
 const check = (ok, what) => { console.log(`${ok ? 'ok  ' : 'FAIL'} ${what}`); if (!ok) fails.push(what); };
-const browser = await chromium.launch();
+const browser = await pw[arg('--browser', 'chromium')].launch();
 
 const BEAM = readFileSync(join(samples, 'Panel beam deflection explorer.sheet'), 'utf8');
 const PUMP = readFileSync(join(samples, 'Panel pump operating point player.sheet'), 'utf8');
 const COLUMN = readFileSync(join(samples, 'Panel column buckling player.sheet'), 'utf8');
 const MANIP = readFileSync(join(samples, 'Panel manipulate free vibration.sheet'), 'utf8');
+const TABS = readFileSync(join(samples, 'Panel beam tabs number markdown.sheet'), 'utf8');
+const SHARED = readFileSync(join(samples, 'Panel shared slider two panels.sheet'), 'utf8');
+const SHEETIN = readFileSync(join(samples, 'Panel sheet input and slider.sheet'), 'utf8');
 const STUCK = [
     '<!--sheet-->', '# Stuck', '',
     '```python', 'import ui', 'x = ui.slider("x", 1, 0, 10)',
@@ -275,6 +278,187 @@ for (const [name, opts] of [
         if (!found) await page.waitForTimeout(300);
     }
     check(found, 'manipulate: a malformed tuple is reported in words');
+    await ctx.close();
+}
+
+// ---- 5. number boxes, a button, tabs, Markdown, a row; reset ----------------------------------------------------------------------
+const slideRelease = (fr, label, v) => fr.evaluate(([l, val]) => {
+    const lab = [...document.querySelectorAll('.cprs-w label')].find(x => x.textContent === l);
+    const el = document.getElementById(lab.getAttribute('for'));
+    el.value = val; el.dispatchEvent(new Event('input', { bubbles: true })); el.dispatchEvent(new Event('change', { bubbles: true }));
+}, [label, v]);
+{
+    const { ctx, page, errors } = await open();
+    await setText(page, TABS);
+    const fr = await panelFrame(page);
+    check(!!fr, 'tabs sample: the panel is drawn');
+    if (fr) {
+        const md = () => fr.locator('.cprs-panel-md').first().innerText().catch(() => '');
+        const sel = () => fr.locator('.cprs-tab[aria-selected=true]').innerText().catch(() => '');
+        check(await fr.locator('.cprs-w input[type=number]').count() === 2, 'number boxes: two of them');
+        check(await fr.locator('.cprs-w button', { hasText: 'Next load case' }).count() === 1, 'a button is drawn');
+        check(await fr.locator('.cprs-tab').count() === 2 && await sel() === 'Bending moment', 'tabs: two, the first selected');
+        check(await fr.locator('.cprs-panel-md strong').count() > 0 && (await md()).includes('Maximum moment 54.0 kN.m'), 'Markdown: bold text and the first result (54.0 kN.m)');
+        check(await fr.locator('.cprs-row').count() === 1, 'a row of results');
+        await fr.evaluate(() => document.querySelector('.cprs-panel').scrollIntoView());
+        await page.screenshot({ path: join(out, 'tabs-desktop-light.png') });
+        const before = await converts(page);
+        await fr.locator('.cprs-tab', { hasText: 'Shear force' }).click();
+        check(await sel() === 'Shear force' && await fr.locator('.cprs-tabpanel').nth(0).isHidden(), 'tabs: a click shows the other tab');
+        await fr.locator('.cprs-tab[aria-selected=true]').press('ArrowLeft');
+        check(await sel() === 'Bending moment', 'tabs: the arrow keys move between them');
+        await fr.locator('.cprs-tab', { hasText: 'Shear force' }).click();
+        await fr.locator('.cprs-w button', { hasText: 'Next load case' }).click();
+        check(await waitFor(async () => (await md()).includes('Load case 2 of 3')), 'the button gives a new value on every press (case 2)');
+        check(await sel() === 'Shear force', 'the selected tab survives an update');
+        const L = fr.locator('#cprs-w-beam-L');
+        await L.fill('8'); await L.press('Enter');
+        check(await waitFor(async () => (await md()).includes('136.0 kN.m')), 'a number box applies on Enter (8 m, mid-span load: 136.0 kN.m)');
+        await L.fill('500'); await L.press('Enter');
+        check(await waitFor(async () => (await L.inputValue()) === '20'), 'a number outside its limits is brought back (500 -> 20)');
+        await fr.locator('.cprs-reset').click();
+        check(await waitFor(async () => (await md()).includes('Load case 1 of 3') && (await md()).includes('54.0')), 'Reset puts every control back, button count included');
+        check(await L.inputValue() === '6' && await fr.locator('.cprs-reset').isDisabled(), 'Reset: the box shows 6 again and the button is disabled at the defaults');
+        check((await converts(page)) === before, 'none of this converted the worksheet again');
+    }
+    check(errors.length === 0, `tabs sample: no page errors${errors.length ? ': ' + errors[0] : ''}`);
+    await ctx.close();
+}
+// Markdown is escaped by the host: HTML written in it is only text
+{
+    const { ctx, page } = await open();
+    await setText(page, ['<!--sheet-->', '# Md', '', '```python', 'import ui', 'x = ui.slider("x", 1, 0, 5)', '@ui.panel(x)', 'def m(x):',
+        '    return ui.markdown("# Head\\n<img src=x onerror=\\"parent.__pwn=1\\"> **bold** `<b>` x=%d\\n\\n- one\\n- two" % x)', '```', ''].join('\n'));
+    const fr = await panelFrame(page);
+    if (fr) {
+        await slide(fr, 'x', 3);
+        check(await waitFor(async () => (await fr.locator('.cprs-panel-md').first().innerText()).includes('x=3')), 'markdown: an update is drawn');
+        check(await fr.locator('.cprs-panel-md img').count() === 0 && (await fr.locator('.cprs-panel-md').first().innerText()).includes('<img src=x'), 'markdown: HTML in the text is shown as text, not made into markup');
+        check(await fr.locator('.cprs-panel-md li').count() === 2 && await fr.locator('.cprs-panel-md h3').count() === 1, 'markdown: a list and a heading');
+        check(await page.evaluate(() => window.__pwn === undefined), 'markdown: nothing ran');
+    } else check(false, 'markdown: the panel is drawn');
+    await ctx.close();
+}
+
+// ---- 6. unchanged results are not sent again; a stale page gets everything; a slow update is reported ---------------------------
+{
+    const { ctx, page } = await open();
+    await setText(page, TABS);
+    const fr = await panelFrame(page);
+    if (fr) {
+        const send = (msg) => fr.evaluate(m => new Promise(res => {
+            const t = setTimeout(() => res('none'), 8000);
+            window.addEventListener('message', function h(e) { if (e.data && e.data.type === 'cpPanelUpdate' && e.data.seq === m.seq) { clearTimeout(t); removeEventListener('message', h); res(e.data); } });
+            window.parent.postMessage(m, '*');
+        }), msg);
+        const run = await fr.locator('.cprs-panel').first().getAttribute('data-run');
+        const same = await send({ type: 'panelEvent', panel: 'beam', run, seq: 801, base: 0, values: { L: 6, w: 12, case: 0 } });
+        check(Array.isArray(same.out) && same.out.length === 3 && same.out.every(o => o.t === 'same') && same.n === 1, 'unchanged results come back as "same", not as data again');
+        const changed = await send({ type: 'panelEvent', panel: 'beam', run, seq: 802, base: 1, values: { L: 6, w: 13, case: 0 } });
+        check(changed.out.map(o => o.t).join() === 'html,tabs,row' && changed.n === 2, 'a change sends the results that changed; Markdown has been turned into markup by the host');
+        check(/<strong>/.test(changed.out[0].h) && !/\*\*/.test(changed.out[0].h), 'the markup is made by the host from escaped text');
+        const stale = await send({ type: 'panelEvent', panel: 'beam', run, seq: 803, base: 0, values: { L: 6, w: 13, case: 0 } });
+        check(stale.out.every(o => o.t !== 'same'), 'a page that does not hold the last answer is sent everything');
+        const badBase = await send({ type: 'panelEvent', panel: 'beam', run, seq: 804, base: -4, values: { L: 6 } });
+        check(badBase === 'none', 'a malformed base is dropped by the host');
+        const badBtn = await send({ type: 'panelEvent', panel: 'beam', run, seq: 805, values: { case: -1 } });
+        check(badBtn !== 'none' && /click count/.test(badBtn.error ?? ''), 'a button value that is not a click count is refused');
+    }
+    await ctx.close();
+}
+{
+    const { ctx, page } = await open();
+    await setText(page, ['<!--sheet-->', '# Slow', '', '```python', 'import ui', 'import time', 'x = ui.slider("x", 1, 0, 5)', '@ui.panel(x)', 'def slow(x):',
+        '    if x == 3:', '        time.sleep(1.8)', '    return "x is %d" % x', '```', ''].join('\n'));
+    const fr = await panelFrame(page);
+    if (fr) {
+        await slide(fr, 'x', 3);
+        check(await waitFor(async () => (await fr.locator('.cprs-panel-slow').count()) === 1, 20000), 'a slow update (1.8 s) is reported, and a player would be stopped');
+        await slide(fr, 'x', 2);
+        check(await waitFor(async () => (await fr.locator('.cprs-panel-slow').count()) === 0), 'the note goes away when updates are quick again');
+    } else check(false, 'slow: the panel is drawn');
+    await ctx.close();
+}
+
+// ---- 7. a widget given to two panels is one control; plotly=True; the layouts count and nesting limits ----------------------------
+{
+    const { ctx, page, errors } = await open();
+    await setText(page, SHARED);
+    const fr = await panelFrame(page);
+    check(!!fr, 'shared: both panels are drawn');
+    if (fr) {
+        check(await fr.locator('.cprs-panel').count() === 2, 'shared: two panels');
+        const out2 = () => fr.locator('.cprs-panel').nth(1).locator('.cprs-w output').first().innerText();
+        const text2 = () => fr.locator('.cprs-panel').nth(1).innerText();
+        check((await text2()).includes('Move the span slider above 4 m'), 'shared: the second panel starts with only a note');
+        await slide(fr, 'Span', 8);
+        check(await waitFor(async () => (await out2()) === '8 m'), 'shared: moving the span in the first panel moves it in the second');
+        const plotly = await waitFor(() => fr.locator('.cprs-panel').nth(1).locator('.js-plotly-plot').count().then(n => n > 0), 30000);
+        if (!plotly) console.log('skip chart checks: Plotly.js did not load (no network?)');
+        else check(true, 'plotly=True: the chart of the second panel is drawn though its first result had no chart');
+        check(await waitFor(async () => (await fr.locator('.cprs-panel').first().innerText()).includes('96.0 kN.m')), 'shared: the first panel was run again (96.0 kN.m at 8 m)');
+        await fr.locator('.cprs-reset').first().click();
+        check(await waitFor(async () => (await out2()) === '3 m' && (await text2()).includes('Move the span slider above 4 m')), 'Reset puts a shared control back in both panels');
+    }
+    check(errors.length === 0, `shared: no page errors${errors.length ? ': ' + errors[0] : ''}`);
+    await ctx.close();
+}
+
+// ---- 8. values kept with the file; a slider tied to a sheet input ---------------------------------------------------------------
+{
+    const { ctx, page } = await open();
+    await setText(page, BEAM);
+    const fr = await panelFrame(page);
+    if (fr) {
+        await slide(fr, 'Span', 10);
+        check(await waitFor(async () => (await tableText(fr)).includes('150.00 kN.m')), 'saved values: the panel was moved to 10 m');
+        await page.locator('.preview-mode-group .toolbar-btn', { hasText: /^Input$/ }).click();
+        await page.waitForTimeout(1500);
+        const save = page.locator('button', { hasText: 'Save values' });
+        check(await waitFor(async () => (await save.count()) > 0, 10000), 'saved values: moving a panel marks the values as unsaved (Save values is offered)');
+        if (await save.count()) {
+            await save.first().click();
+            await page.waitForTimeout(1000);
+            const saved = await page.evaluate(() => window.calcpadActiveEditor.getValue());
+            check(/"panel:beam:L":\s*"10"/.test(saved), 'saved values: Save values writes panel:beam:L into the comment');
+            const ctx2 = await browser.newContext({ viewport: { width: 1300, height: 1000 } });
+            const p2 = await ctx2.newPage();
+            await p2.goto(url);
+            await p2.waitForFunction(() => window.calcpadActiveEditor != null && window.calcpadFiles != null, null, { timeout: 60000 });
+            await p2.evaluate(v => window.calcpadActiveEditor.setValue(v), saved);
+            const fr2 = await panelFrame(p2);
+            check(!!fr2 && await waitFor(async () => (await fr2.locator('.cprs-w output').first().innerText()) === '10 m'), 'saved values: a reopened file starts the panel at 10 m');
+            await ctx2.close();
+        }
+    }
+    await ctx.close();
+}
+{
+    const { ctx, page, errors } = await open();
+    await setText(page, SHEETIN);
+    await panelFrame(page);   // answers the question about running Python, which would otherwise cover the buttons
+    await page.locator('.preview-mode-group .toolbar-btn', { hasText: /^Input$/ }).click();
+    await page.waitForTimeout(1500);
+    const fr = await panelFrame(page, 90000);
+    check(!!fr, 'sheet input: the panel is drawn in Input mode');
+    if (fr) {
+        check(await fr.locator('.cprs-w output').first().innerText().catch(() => '') === '6 m', 'sheet input: the slider starts from the sheet input (ui.input, 6 m)');
+        // the input is in the docked panel (a sheet with a slider docks its inputs) or, undocked, in the form
+        const inputValue = async () => {
+            const d = await page.locator('.input-dock .ce-field[data-name^="L:"] input').first().inputValue({ timeout: 500 }).catch(() => null);
+            if (d !== null) return d;
+            for (const f of page.frames()) { const v = await f.locator('input[data-ui-var^="L:"]').first().inputValue({ timeout: 500 }).catch(() => null); if (v !== null) return v; }
+            return null;
+        };
+        const before = await converts(page);
+        await slide(fr, 'Span', 9);
+        await page.waitForTimeout(800);
+        check((await converts(page)) === before, 'sheet input: dragging the slider does not convert the sheet');
+        await slideRelease(fr, 'Span', 9);
+        check(await waitFor(async () => (await inputValue()) === '9', 20000), 'sheet input: releasing the slider writes 9 into the sheet input L');
+        check((await converts(page)) > before, 'sheet input: and the sheet is calculated again once');
+    }
+    check(errors.length === 0, `sheet input: no page errors${errors.length ? ': ' + errors[0] : ''}`);
     await ctx.close();
 }
 

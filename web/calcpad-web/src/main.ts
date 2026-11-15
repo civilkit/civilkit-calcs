@@ -72,6 +72,8 @@ import type { UiControl, DefaultRow, CalcpadLogLevel, DisplayLogLevel } from 'ca
 import { mountSuiteBar } from './suitebar';
 import { initLanguage, onLanguageChanged, td } from './i18n';
 import { InputDock, dockHideStyle, dockInputsFromHtml, type DockInput } from './input-dock';
+import { parseInputs } from './embed/inputs';
+import { setPanelHooks } from './wasm/python-panels';
 import { mountLanguagePrompt } from './i18n/prompt';
 import './styles/civilkit-tokens.css';
 import './editor/vscode-variables.css';
@@ -762,6 +764,66 @@ async function bootstrap(): Promise<void> {
         changed: (key, value, live) => dockChanged(key, value, live),
     });
     appInstance.attachInputDock(inputDock.root);
+
+    // ---- Interactive panels (wasm/python-panels.ts, public/py/lib/ui.py) ----
+    // A panel's values are kept with the sheet's other entered values, under `panel:NAME:WIDGET` (in memory until saved, like them);
+    // `ui.input("L")` reads the sheet's own input L, and a slider made with `sheet=True` writes into it when released.
+    const groupForScope = (scope: string): EditorGroup | undefined => [...groups.values()].find((g) => docKeyFor(g) === scope);
+    const declaredInputs = new Map<string, { content: string; inputs: { name: string; value: string; kind: string }[] }>();
+    setPanelHooks({
+        prepare: async (scope) => {
+            const g = groupForScope(scope);
+            if (!g) return;
+            const content = g.editor.getValue();
+            if (declaredInputs.get(scope)?.content === content) return;
+            const calcpad = isSheetText(content) ? await compileSheet(content).then((r) => r.text, () => '') : content;
+            declaredInputs.set(scope, { content, inputs: parseInputs(calcpad) });
+        },
+        stored: (scope) => {
+            const g = groupForScope(scope);
+            // A reopened file keeps its values in a comment on its first line; the store follows that comment when it has moved.
+            if (g) syncUiOverrides(g, g.editor.getValue());
+            const rec = g ? uiOverrides.toRecord(uiDocKeyFor(g)) : undefined;
+            return rec ? Object.fromEntries(Object.entries(rec).filter(([k]) => k.startsWith('panel:'))) : undefined;
+        },
+        persist: (scope, panel, values) => {
+            const g = groupForScope(scope);
+            if (!g) return;
+            const docKey = uiDocKeyFor(g);
+            let changed = false;
+            for (const [w, v] of Object.entries(values)) if (uiOverrides.set(docKey, `panel:${panel}:${w}`, String(v))) changed = true;
+            if (!changed) return;
+            uiOverridesDirty.add(docKey);
+            if (g === activeGroup) refreshUiDirtyIndicator();
+        },
+        sheetInputs: (scope) => {
+            const g = groupForScope(scope);
+            const out: Record<string, number> = {};
+            if (!g) return out;
+            const rec = uiOverrides.toRecord(uiDocKeyFor(g)) ?? {};
+            for (const i of declaredInputs.get(scope)?.inputs ?? []) {
+                if (i.kind !== 'number') continue;
+                const key = Object.keys(rec).find((k) => !k.startsWith('panel:') && k.split(':')[0] === i.name);
+                const n = parseFloat(key ? rec[key] : i.value);
+                if (Number.isFinite(n)) out[i.name] = n;
+            }
+            return out;
+        },
+        sheetSet: (scope, name, value) => {
+            const g = groupForScope(scope);
+            if (!g) return;
+            const docKey = uiDocKeyFor(g);
+            const key = (uiControls.get(docKey) ?? []).find((c) => c.key.split(':')[0] === name)?.key
+                ?? (g === activeGroup ? inputDock.items.find((i) => i.name === name)?.key : undefined);
+            if (!key) return;
+            if (uiOverrides.set(docKey, key, String(value))) {
+                uiOverridesDirty.add(docKey);
+                if (syncsFormToSource()) writeFormToSource(g, false);
+                if (g === activeGroup) refreshUiDirtyIndicator();
+            }
+            void refreshPreviewFor(g);
+        },
+    });
     onLanguageChanged(() => inputDock.relabel());
     const dockPreference = (): string | null => { try { return sessionStorage.getItem(DOCK_KEY); } catch { return null; } };
     /** Docked unless turned off in this session; by default only for a sheet with a slider. */
@@ -2116,7 +2178,7 @@ async function bootstrap(): Promise<void> {
         const all = { ...(readUiOverrides(source) ?? {}), ...(uiOverrides.toRecord(docKey) ?? {}) };
         const rows = classifyUiOverrides(all, uiControls.get(docKey) ?? [])
             .map((r) => ({ key: r.key, value: r.value, line: r.line }));
-        return locateFormRows(source, rows).filter((r) => !r.key.startsWith('map:'));
+        return locateFormRows(source, rows).filter((r) => !r.key.startsWith('map:') && !r.key.startsWith('panel:'));
     }
 
     /** Replaces a model's text changing only the lines that differ, so the cursor, folds and scroll stay where they are. */

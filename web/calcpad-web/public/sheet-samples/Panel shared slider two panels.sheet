@@ -1,0 +1,24 @@
+<!--sheet-->
+# Two panels, one slider
+
+The same slider object is given to both panels, so it is one control: moving it in either panel moves it in the other, and both functions run again. The second panel is made with `plotly=True`: its first result is only a note (the span is too short to chart), and the hint loads Plotly for the chart that follows. A **Reset** button puts the controls back to their starting values.
+
+```python
+import ui
+
+L = ui.slider("L", 3, 1, 12, step=0.5, unit="m", label="Span")
+w = ui.slider("w", 12, 1, 40, unit="kN/m", label="Load")
+
+@ui.panel(L, w)
+def moment(L, w):
+    xs = [L * i / 40 for i in range(41)]
+    return [ui.plot(xs, [w * x * (L - x) / 2 for x in xs], xlabel="x (m)", ylabel="M (kN.m)", names=["Moment"]),
+            "Maximum moment %.1f kN.m" % (w * L * L / 8)]
+
+@ui.panel(L, plotly=True)
+def shear(L):
+    if L < 4:
+        return "Move the span slider above 4 m to draw the shear diagram."
+    xs = [L * i / 40 for i in range(41)]
+    return ui.plot(xs, [12 * (L / 2 - x) for x in xs], xlabel="x (m)", ylabel="V (kN)", names=["Shear at 12 kN/m"])
+```

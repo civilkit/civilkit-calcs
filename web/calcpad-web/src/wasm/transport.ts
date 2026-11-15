@@ -32,7 +32,7 @@ import { findPythonBlocks, hasPythonBlock, pythonErrors, remapErrors as remapPyt
 import { BLOCK_MS, LONG_BLOCK_MS, PythonRunner } from './python-runner';
 import { askLongerLimit, mayRunPython } from './python-consent';
 import { plotlyForExport, plotlyPage, withFigureImages } from './python-plotly';
-import { panelForExport, panelPage, panelSeed, rememberRun } from './python-panels';
+import { panelForExport, panelPage, panelPrepare, panelSeed, rememberRun } from './python-panels';
 
 const API_PREFIX = '/api/calcpad/';
 /** calcpad-wasm's UI_ASSETS_MARKER: where the datagrid libraries go. */
@@ -459,6 +459,7 @@ export function installWasmTransport(): WasmTransport {
         let results: BlockResult[];
         const scope = transport.pythonScope();
         // Interactive panels (ui.py) start from the values they were last moved to in this tab.
+        await panelPrepare(scope);
         const seed = panelSeed(scope);
         if (await mayRunPython(scope, signature)) {
             results = await python.run(blocks, seed);

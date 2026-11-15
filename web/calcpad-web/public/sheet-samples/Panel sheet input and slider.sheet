@@ -1,0 +1,27 @@
+<!--sheet-->
+# A panel slider tied to a sheet input
+
+The span `L` below is an ordinary sheet input. The slider in the panel starts from its value (`ui.input`) and, because it is made with `sheet=True`, writes its value back into the input when you let go. Choose **Input** in the results bar: dragging the slider moves the chart at once, and on release the lines under the panel recalculate.
+
+L: ? 6 m [2 .. 12 step 0.5] | span
+w: ? 12 kN/m [2 .. 40 step 1] | uniform load
+
+```python
+import ui
+
+start = ui.input("L", 6)
+span = ui.slider("L", start, 2, 12, step=0.5, unit="m", label="Span", sheet=True)
+
+@ui.panel(span)
+def moment(L):
+    w = 12.0
+    n = 40
+    xs = [L * i / n for i in range(n + 1)]
+    M = [w * x * (L - x) / 2 for x in xs]
+    return [ui.plot(xs, M, xlabel="x (m)", ylabel="M (kN.m)", ylim=(0, 200)), "Maximum moment %.1f kN.m at a span of %.1f m (w = 12 kN/m in this chart)." % (w * L * L / 8, L)]
+```
+
+The sheet's own lines, recalculated when the slider is released:
+
+Mmax: w * L^2 / 8 -> kN*m | maximum moment
+Vmax: w * L / 2 -> kN | support reaction
