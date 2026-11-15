@@ -146,17 +146,29 @@ check(examples.length >= 5, `${examples.length} examples found in the chapter`);
 let factN = 0;
 const fence = (py) => `# Fact ${++factN}\n\n\`\`\`python\n${py}\n\`\`\`\n`;
 {
-    // a widget given to two panels is drawn in each, and the two do not move together
+    // a widget given to two panels is ONE control: it is drawn in each and moving it moves both (26.11.2)
     const fr = await run(fence([
         'import ui', 'L = ui.slider("L", 6, 2, 12, unit="m")',
         '@ui.panel(L)', 'def one(L):', '    return "one %g" % L',
         '@ui.panel(L)', 'def two(L):', '    return "two %g" % L'].join('\n')), async (f) => (await f.locator('.cprs-panel .cprs-w').count()) >= 2);
-    check(!!fr && await fr.locator('.cprs-panel').count() === 2, 'fact: a widget given to two panels gives each panel its own slider');
+    check(!!fr && await fr.locator('.cprs-panel').count() === 2, 'fact: a widget given to two panels is drawn in each panel');
     if (fr) {
         await move(fr, 0);
         check(await waitFor(async () => (await shown(fr, 0)).startsWith('one 12')), 'fact: the first panel follows its slider');
-        check((await shown(fr, 1)).startsWith('two 6'), 'fact: the second panel does not move with it');
+        check(await waitFor(async () => (await shown(fr, 1)).startsWith('two 12')), 'fact: the second panel moves with it, it is one control');
     }
+}
+{
+    // two widgets that only share a name are not linked: it is the same object that counts
+    const fr = await run(fence([
+        'import ui', 'A = ui.slider("L", 6, 2, 12, unit="m")', 'B = ui.slider("L", 6, 2, 12, unit="m")',
+        '@ui.panel(A)', 'def one(L):', '    return "one %g" % L',
+        '@ui.panel(B)', 'def two(L):', '    return "two %g" % L'].join('\n')), async (f) => (await f.locator('.cprs-panel .cprs-w').count()) >= 2);
+    if (fr) {
+        await move(fr, 0);
+        check(await waitFor(async () => (await shown(fr, 0)).startsWith('one 12')), 'fact: the first of two same-named sliders follows its own slider');
+        check((await shown(fr, 1)).startsWith('two 6'), 'fact: the second does not move with it');
+    } else check(false, 'fact: two same-named sliders are drawn');
 }
 for (const [py, re, what] of [
     ['import numpy as np\nX, Y = np.meshgrid([1, 2], [3, 4])\nprint("grid", len(X), len(X[0]))', /grid 2 2/, 'numpy.meshgrid works'],
