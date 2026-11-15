@@ -229,8 +229,8 @@ arguments, which is why `ui.manipulate(L=(2, 12))` is not offered.
 
 `ui.plot(x, y1, y2, ..., names=[...], xlabel="", ylabel="", title="", xlim=None, ylim=None,
 height=320)` makes a line chart. Give `ylim` (and `xlim`) when the picture should keep its axes as
-a control moves; otherwise the chart rescales every time. A line with an empty name is left out of
-the legend. For anything else (a bar chart, a surface, several panels of axes) build the figure
+a control moves; otherwise the chart rescales every time. A line without a name takes the colour of the line
+before it and is left out of the legend, which suits the mirror image of an envelope. For anything else (a bar chart, a surface, several panels of axes) build the figure
 with `plotly.graph_objects` as before.
 
 ## The `ui` reference

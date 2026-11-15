@@ -48,7 +48,7 @@ interface Loaded {
     wasm: Uint8Array;
     wasmUrl: string;
     files: [string, string][];
-    /** Library files fetched only for a block that imports them (py/lib/plotly/, py/lib/ui.py), as paths under py/lib. */
+    /** Library files fetched only for a block that imports them (py/lib/plotly/, py/lib/ui.py), as paths under py/lib. `ui.plot` imports plotly itself, so a block that names it fetches plotly too. */
     lazy: string[];
     lazyText: Promise<[string, string][]> | null;
 }
@@ -163,7 +163,7 @@ async function ensurePlotly(source: string): Promise<void> {
         if (!r.ok) throw new Error(`${f}: ${r.status}`);
         return [f, await r.text()];
     }));
-    const files = (await l.lazyText).filter(([f]) => (f === 'ui.py' ? /\bui\b/.test(source) : /plotly/.test(source)));
+    const files = (await l.lazyText).filter(([f]) => (f === 'ui.py' ? /\bui\b/.test(source) : /plotly|\bui\.plot\b|\bfrom\s+ui\s+import\b/.test(source)));
     const { mp, made } = session;
     for (const [path, src] of files) {
         if (session.written.has(path)) continue;

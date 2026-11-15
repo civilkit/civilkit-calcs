@@ -23,6 +23,7 @@ const browser = await chromium.launch();
 const BEAM = readFileSync(join(samples, 'Panel beam deflection explorer.sheet'), 'utf8');
 const PUMP = readFileSync(join(samples, 'Panel pump operating point player.sheet'), 'utf8');
 const COLUMN = readFileSync(join(samples, 'Panel column buckling player.sheet'), 'utf8');
+const MANIP = readFileSync(join(samples, 'Panel manipulate free vibration.sheet'), 'utf8');
 const STUCK = [
     '<!--sheet-->', '# Stuck', '',
     '```python', 'import ui', 'x = ui.slider("x", 1, 0, 10)',
@@ -222,6 +223,58 @@ for (const [name, opts] of [
         }
     }
     check(errors.length === 0, `${name}: no page errors`);
+    await ctx.close();
+}
+
+// ---- 4. ui.manipulate: controls from tuples, ui.plot, a short error for a bad tuple -------------------------------------------
+{
+    const { ctx, page, errors } = await open();
+    await setText(page, MANIP);
+    const fr = await panelFrame(page);
+    check(!!fr, 'manipulate: the panel is drawn');
+    if (fr) {
+        check(await fr.locator('.cprs-w input[type=range]').count() === 3, 'manipulate: three sliders from three tuples');
+        const labels = await fr.locator('.cprs-w label').allInnerTexts();
+        check(['Natural frequency', 'Damping ratio', 'Time shown (cycles)'].every(l => labels.includes(l)), 'manipulate: labels= names the controls');
+        check(await fr.locator('.cprs-w output').first().innerText() === '2 Hz', 'manipulate: a default and a unit are kept (2 Hz)');
+        const txt = () => fr.locator('.cprs-panel-text').first().innerText().catch(() => '');
+        check((await txt()).includes('Underdamped'), 'manipulate: the first result is for zeta = 0.1');
+        const plotly = await waitFor(() => fr.locator('.cprs-panel .js-plotly-plot').count().then(n => n > 0), 30000);
+        if (!plotly) console.log('skip chart checks: Plotly.js did not load (no network?)');
+        if (plotly) {
+            const r = await fr.evaluate(() => document.querySelector('.cprs-panel .js-plotly-plot').layout.yaxis.range);
+            check(r && r[0] === -1.1 && r[1] === 1.1, 'ui.plot: ylim keeps the axis still');
+            check(await fr.evaluate(() => document.querySelector('.cprs-panel .js-plotly-plot').data.length) === 3, 'ui.plot: one trace per y');
+            const legend = await fr.evaluate(() => document.querySelector('.cprs-panel .js-plotly-plot').data.map(d => d.showlegend));
+            check(legend[0] === true && legend[1] === true && legend[2] === false, 'ui.plot: an unnamed line stays out of the legend');
+            const col = await fr.evaluate(() => document.querySelector('.cprs-panel .js-plotly-plot').data.map(d => d.line && d.line.color));
+            check(col[1] && col[2] === col[1] && col[0] !== col[1], 'ui.plot: an unnamed line takes the colour of the line before it');
+        }
+        await fr.evaluate(() => document.querySelector('.cprs-panel').scrollIntoView());
+        await page.screenshot({ path: join(out, 'manipulate-desktop-light.png') });
+        const before = await converts(page);
+        await slide(fr, 'Damping ratio', 1);
+        check(await waitFor(async () => (await txt()).includes('Critically damped')), 'manipulate: zeta = 1 is critically damped');
+        await slide(fr, 'Damping ratio', 1.5);
+        check(await waitFor(async () => (await txt()).includes('Overdamped')), 'manipulate: zeta = 1.5 is overdamped');
+        await slide(fr, 'Damping ratio', 0);
+        check(await waitFor(async () => (await txt()).includes('Underdamped')), 'manipulate: zeta = 0 gives a clean result (no division error)');
+        check((await converts(page)) === before, 'manipulate: the worksheet was not converted again');
+    }
+    check(errors.length === 0, `manipulate: no page errors${errors.length ? ': ' + errors[0] : ''}`);
+    await ctx.close();
+}
+{
+    const { ctx, page } = await open();
+    await setText(page, ['<!--sheet-->', '# Bad', '', '```python', 'import ui', '@ui.manipulate(("x",))', 'def f(x):', '    return x', '```', ''].join('\n'));
+    let found = false;
+    for (let i = 0; i < 100 && !found; i++) {
+        const yes = page.locator('#cprs-python-yes');
+        if (await yes.count().catch(() => 0)) await yes.first().click().catch(() => {});
+        for (const f of page.frames()) if (/each control is a tuple/.test(await f.locator('body').innerText().catch(() => ''))) found = true;
+        if (!found) await page.waitForTimeout(300);
+    }
+    check(found, 'manipulate: a malformed tuple is reported in words');
     await ctx.close();
 }
 

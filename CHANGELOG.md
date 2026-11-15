@@ -11,6 +11,9 @@ under "Crates" at the end, on plain 0.x semver, and are tagged `<crate-name>-v<v
 
 ## [Unreleased]
 
+### Added
+- **Manipulate for Python panels** - `@ui.manipulate(("L", 2, 12, 6, 0.5, "m"), ("mode", ["a", "b"]), ("grid", True))` makes the controls from tuples and turns the function below it into a panel, in the manner of Mathematica's Manipulate; `ui.plot(x, y, ...)` draws the line chart in one call and `ylim=` keeps its axes still while a control moves. A new sample in the Panels group, Free vibration with ui.manipulate, and a section in the interactive panels chapter of the guide show it.
+
 ## [26.11.1] - 2026-11-06
 
 ### Fixed

@@ -253,15 +253,19 @@ def manipulate(*controls, labels=None):
 
 def plot(x, *ys, names=None, xlabel="", ylabel="", title="", xlim=None, ylim=None, height=320):
     """A Plotly line chart in one call, for a panel to return. x and every y are lists (or numpy arrays) of the same length.
-    Names label the lines (a line with no name stays out of the legend). Give xlim and ylim, such as ylim=(-5, 5), to keep the axes
+    Names label the lines. A line with no name takes the colour of the line before it and stays out of the legend (the mirror of an envelope, say). Give xlim and ylim, such as ylim=(-5, 5), to keep the axes
     still while a control moves."""
     import plotly.graph_objects as go
     if not ys:
         raise TypeError("ui.plot(x, y, ...) needs at least one y")
     fig = go.Figure()
+    palette = ["#1f77b4", "#ff7f0e", "#2ca02c", "#d62728", "#9467bd", "#8c564b", "#e377c2", "#7f7f7f", "#bcbd22", "#17becf"]
+    k = -1
     for i, y in enumerate(ys):
         nm = names[i] if names and i < len(names) else ""
-        fig.add_trace(go.Scatter(x=x, y=y, mode="lines", name=nm or None, showlegend=bool(nm)))
+        if nm or k < 0:
+            k += 1
+        fig.add_trace(go.Scatter(x=x, y=y, mode="lines", name=nm or None, showlegend=bool(nm), line=dict(color=palette[k % len(palette)])))
     fig.update_layout(height=height, margin=dict(l=56, r=16, t=40 if title else 16, b=44), xaxis_title=xlabel, yaxis_title=ylabel,
                       title=title or None)
     if xlim:
