@@ -194,6 +194,8 @@ stops at the last frame.
 
 ## The short form: `ui.manipulate`
 
+<video controls preload="none" poster="videos/ui-manipulate.jpg" style="width:100%;max-width:960px" src="videos/ui-manipulate.mp4" aria-label="Free vibration written with ui.manipulate: dragging the damping ratio and the natural frequency redraws the decay curve"></video>
+
 When a panel is a few controls and a function, `ui.manipulate` writes both at once, in the manner of
 Mathematica's Manipulate. Each control is one tuple, in the order of the function's arguments, and
 `ui.plot` draws a line chart in one call.
@@ -238,6 +240,10 @@ before it and is left out of the legend, which suits the mirror image of an enve
 with `plotly.graph_objects` as before.
 
 ## Number boxes and buttons
+
+The clip shows number boxes, the button, tabs, Markdown and Reset together.
+
+<video controls preload="none" poster="videos/panel-controls-tabs.jpg" style="width:100%;max-width:960px" src="videos/panel-controls-tabs.mp4" aria-label="Beam diagrams in tabs with number boxes, a button, a Markdown summary and Reset"></video>
 
 `ui.number(name, default, min=None, max=None, step=None, unit="", label=None)` is a box to type a
 number in. The value is taken when you press Enter or leave the box, not on every key, and a value
@@ -304,6 +310,8 @@ name.
 
 ## Reset, and one control in two panels
 
+<video controls preload="none" poster="videos/panel-shared-reset.jpg" style="width:100%;max-width:960px" src="videos/panel-shared-reset.mp4" aria-label="Two panels sharing one slider; the second draws its chart after the move; Reset puts the shared slider back"></video>
+
 Every panel has a **Reset** button that puts its controls back to the values the panel started
 with (it is greyed out while they are there). A button's count goes back to 0.
 
@@ -339,6 +347,8 @@ values are only held in memory until you save, like any entered value, and **Res
 in the Input view clears them with the rest.
 
 ## A slider tied to a sheet input
+
+<video controls preload="none" poster="videos/panel-sheet-input.jpg" style="width:100%;max-width:960px" src="videos/panel-sheet-input.mp4" aria-label="A panel slider tied to a sheet input: dragging moves the chart, letting go writes the input and recalculates the sheet"></video>
 
 A panel cannot read the sheet's quantities, but it can read and write the sheet's **inputs**.
 

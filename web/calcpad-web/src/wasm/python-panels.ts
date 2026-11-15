@@ -219,10 +219,16 @@ var ts=root.querySelectorAll(".cprs-tabs");for(var i=0;i<ts.length;i++)me.tabify
 Panel.prototype.syncReset=function(){var me=this,same=true;for(var k in me.defaults)if(me.values[k]!==me.defaults[k])same=false;me.resetBtn.disabled=same;};
 Panel.prototype.change=function(w,v,release){
 var me=this;me.values[w.name]=v;
+if(w.sheet&&release){
+var l0=w.wid!=null?shared[w.wid]:null;
+if(l0&&l0.length>1)for(var j=0;j<l0.length;j++){var e0=l0[j];if(e0.panel!==me){e0.set(v);e0.panel.values[e0.name]=v;e0.panel.syncReset();}}
+me.syncReset();
+try{window.parent.postMessage({type:"panelSheet",panel:me.id,run:me.run,name:w.name,value:Number(v)},"*");}catch(e3){}
+return;
+}
 var l=w.wid!=null?shared[w.wid]:null;
 if(l&&l.length>1)for(var i=0;i<l.length;i++){var e=l[i];if(e.panel!==me){e.set(v);e.panel.values[e.name]=v;e.panel.syncReset();e.panel.schedule();}}
 me.syncReset();
-if(w.sheet&&release)try{window.parent.postMessage({type:"panelSheet",panel:me.id,run:me.run,name:w.name,value:Number(v)},"*");}catch(e2){}
 me.schedule();
 };
 Panel.prototype.reset=function(){
@@ -295,7 +301,8 @@ this.players.forEach(function(p){p.stop();});
 Panel.prototype.update=function(d){
 var me=this;if(d.seq!==me.seq)return;
 me.busy=false;clearTimeout(me.busyTimer);me.root.classList.remove("cprs-busy");me.root.removeAttribute("aria-busy");
-if(d.stale){me.fail("This panel is out of date. Calculate the worksheet again to refresh it.");return;}
+if(d.stale){clearTimeout(me.staleTimer);me.staleTimer=setTimeout(function(){me.fail("This panel is out of date. Calculate the worksheet again to refresh it.");},1500);return;}
+clearTimeout(me.staleTimer);
 if(d.error){me.fail(d.error);return;}
 var e=me.root.querySelector(".cprs-panel-err");if(e)e.remove();
 if(typeof d.n==="number")me.applied=d.n;
