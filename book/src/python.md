@@ -12,7 +12,8 @@ quantity lines that follow.
 
 Nothing is downloaded for a sheet without Python. The first time a sheet with a Python block is
 calculated, the page asks "This worksheet runs Python code" (**Run Python** or **Not now**). The
-answer is remembered for that tab. About 0.6 MB is fetched the first time and cached afterwards.
+answer is remembered for that tab. Tick **Do not ask again on this device** with Run Python to stop the question
+for every worksheet on this device (the choice is kept in the browser, so clearing the site's data asks again). About 0.6 MB is fetched the first time and cached afterwards.
 
 ## The block
 

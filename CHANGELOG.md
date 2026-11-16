@@ -9,6 +9,11 @@ The app changes are listed under their YY.M.N version below. The three Rust libr
 under "Crates" at the end, on plain 0.x semver, and are tagged `<crate-name>-v<version>`
 (for example `civilkit-calcs-engine-v0.1.0`).
 
+## [Unreleased]
+
+### Added
+- **Do not ask again for Python** - The question "This worksheet runs Python code" has a box, Do not ask again on this device. Tick it with Run Python and worksheets run their Python without the question; clearing the site's data in the browser brings the question back.
+
 ## [26.11.3] - 2026-11-16
 
 ### Added

@@ -327,7 +327,7 @@ confirmation below: the worker chunk, `py/micropython/micropython.{mjs,wasm}` an
 ## Consent and sandbox
 
 Calculating a worksheet executes its blocks, so the first run in each open tab asks "This worksheet runs Python code" (Run Python
-or Not now). Run is remembered for that tab. Not now is remembered until the worksheet's Python code changes; blocks then show a
+or Not now). Run is remembered for that tab; ticking "Do not ask again on this device" stores `cprs.python.alwaysRun` in localStorage and ends the question for every tab (`resetPythonAlwaysAllowed()` is the way back; there is no settings entry yet). Not now is remembered until the worksheet's Python code changes; blocks then show a
 "Python was not run" line and nothing loads. The Samples browser never runs a sample's Python: a Python sample's preview shows
 its source, and opening it asks as above.
 

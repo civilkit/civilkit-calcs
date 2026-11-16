@@ -1,6 +1,16 @@
 // calcpad-rs: the one-time "this worksheet runs Python" question, asked per open tab before its first run.
 // An answer of Run is remembered for the tab. Not now is remembered until the worksheet's Python code changes.
 
+const KEY = 'cprs.python.alwaysRun';
+/** True when the user ticked "Do not ask again" with Run Python: every worksheet then runs its Python without the question. */
+export function pythonAlwaysAllowed(): boolean {
+    try { return localStorage.getItem(KEY) === '1'; } catch { return false; }
+}
+/** Ask again from now on (the way back from "Do not ask again"). */
+export function resetPythonAlwaysAllowed(): void {
+    try { localStorage.removeItem(KEY); } catch { /* storage blocked */ }
+}
+
 const allowed = new Set<string>();
 const declined = new Map<string, string>();
 let open: Promise<boolean> | null = null;
@@ -21,6 +31,12 @@ function ask(): Promise<boolean> {
         const p = document.createElement('p');
         p.textContent = 'Calculating it runs the #python blocks in a sandboxed worker in this browser. They cannot reach the network or your files. Run them only for worksheets you trust.';
         p.style.margin = '6px 0 14px';
+        const never = document.createElement('label');
+        never.style.cssText = 'display:flex;gap:6px;align-items:center;margin:0 0 12px;cursor:pointer';
+        const neverBox = document.createElement('input');
+        neverBox.type = 'checkbox';
+        neverBox.id = 'cprs-python-never';
+        never.append(neverBox, document.createTextNode('Do not ask again on this device'));
         const row = document.createElement('div');
         row.style.cssText = 'display:flex;gap:8px;justify-content:flex-end';
         const mk = (label: string, value: boolean, id: string) => {
@@ -28,7 +44,10 @@ function ask(): Promise<boolean> {
             b.textContent = label;
             b.id = id;
             b.style.cssText = 'padding:4px 14px;font:inherit;cursor:pointer';
-            b.onclick = () => { done(value); };
+            b.onclick = () => {
+                if (value && neverBox.checked) { try { localStorage.setItem(KEY, '1'); } catch { /* storage blocked */ } }
+                done(value);
+            };
             return b;
         };
         const no = mk('Not now', false, 'cprs-python-no');
@@ -37,7 +56,7 @@ function ask(): Promise<boolean> {
         const onKey = (e: KeyboardEvent) => { if (e.key === 'Escape') { e.stopPropagation(); done(false); } };
         document.addEventListener('keydown', onKey, true);
         row.append(no, yes);
-        box.append(h, p, row);
+        box.append(h, p, never, row);
         back.append(box);
         document.body.append(back);
         yes.focus();
@@ -46,7 +65,7 @@ function ask(): Promise<boolean> {
 
 /** Whether the tab `scope` may run the Python of a worksheet whose Python code is `signature`. */
 export async function mayRunPython(scope: string, signature: string): Promise<boolean> {
-    if (allowed.has(scope)) return true;
+    if (allowed.has(scope) || pythonAlwaysAllowed()) return true;
     if (declined.get(scope) === signature) return false;
     // One question at a time; callers that arrive meanwhile share the answer.
     open ??= ask().finally(() => { open = null; });
