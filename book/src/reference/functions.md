@@ -89,7 +89,7 @@ Where a typed alternative exists it is given; the editor converts it when a file
 | `asin(x)` | Inverse sine (arc sine) |
 | `acos(x)` | Inverse cosine (arc cosine) |
 | `atan(x)` | Inverse tangent (arc tangent) |
-| `atan2(a; b)` | Two-argument arc tangent |
+| `atan2(x; y)` | Angle of the point (x, y), that is `atan(y/x)` in the right quadrant. The x value comes first, the reverse of C, Python and MATLAB `atan2(y, x)` |
 | `acsc(x)` | Inverse cosecant |
 | `asec(x)` | Inverse secant |
 | `acot(x)` | Inverse cotangent |
