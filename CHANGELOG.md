@@ -14,6 +14,9 @@ under "Crates" at the end, on plain 0.x semver, and are tagged `<crate-name>-v<v
 ### Added
 - **Do not ask again for Python** - The question "This worksheet runs Python code" has a box, Do not ask again on this device. Tick it with Run Python and worksheets run their Python without the question; clearing the site's data in the browser brings the question back.
 
+### Changed
+- **Documentation opens our guide** - The Documentation button in the Help tab (and the desktop Help menu) opens the CivilKit Calcs user guide instead of the CalcpadCE documentation, which describes a language that differs more with each release. The Help page lists the guide first and keeps the CalcpadCE links as credit.
+
 ## [26.11.3] - 2026-11-16
 
 ### Added

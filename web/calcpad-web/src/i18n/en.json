@@ -494,7 +494,7 @@
   "ribbon.btn.x-dark.label": "Dark",
   "ribbon.btn.x-dark.title": "Dark theme",
   "ribbon.btn.x-docs.label": "Documentation",
-  "ribbon.btn.x-docs.title": "Open the CalcpadCE documentation (the worksheet language)",
+  "ribbon.btn.x-docs.title": "Open the CivilKit Calcs user guide (civilkit.io, in a new tab)",
   "ribbon.btn.x-insert.label": "Insert panel",
   "ribbon.btn.x-insert.title": "Symbols, functions and snippets in the sidebar",
   "ribbon.btn.x-keys.label": "Shortcuts",

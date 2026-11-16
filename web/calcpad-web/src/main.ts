@@ -167,6 +167,7 @@ ${inBrowser ? '' : `        <tr><th>Subscript</th><td>Ctrl+=</td></tr>
         <tr><th>Toggle Comment</th><td>Ctrl+Q</td></tr>
 `}    </table>
 ${inBrowser ? '    <p>The other formatting commands are in the Insert tab and the ribbon, and the math keyboard is in the status bar.</p>\n' : ''}    <h4>Resources</h4>
+    <p><a href="https://civilkit.io/calcs/guide/">CivilKit Calcs user guide</a></p>
     <p><a href="https://github.com/mageaustralia/civilkit-calcs">CivilKit Calcs on GitHub</a></p>
     <p><a href="https://github.com/imartincei/CalcpadCE">CalcpadCE (upstream) on GitHub</a></p>
     <p><a href="https://calcpad-ce.org/">calcpad-ce.org</a></p>
@@ -3183,7 +3184,7 @@ async function bootstrap(): Promise<void> {
 
                 case 'help-documentation': {
                     const { openUrl } = await import('@tauri-apps/plugin-opener');
-                    await openUrl('https://imartincei.github.io/CalcpadCE/');
+                    await openUrl('https://civilkit.io/calcs/guide/');
                     break;
                 }
             }

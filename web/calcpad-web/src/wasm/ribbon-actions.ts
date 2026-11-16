@@ -29,7 +29,7 @@ export interface RibbonCtx {
 
 const UPSTREAM_URL = 'https://github.com/imartincei/CalcpadCE';
 const PROJECT_URL = 'https://github.com/mageaustralia/civilkit-calcs';
-const DOCS_URL = UPSTREAM_URL;
+const DOCS_URL = 'https://civilkit.io/calcs/guide/';
 const CHANGELOG_URL = `${PROJECT_URL}/blob/main/CHANGELOG.md`;
 const WHATS_NEW_URL = 'https://civilkit.io/calcs/whats-new/';
 const LEARN_URL = 'https://civilkit.io/calcs/learn/';

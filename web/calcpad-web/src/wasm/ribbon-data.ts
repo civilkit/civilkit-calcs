@@ -612,7 +612,7 @@ export const RIBBON: RibbonTab[] = [
                 action('x-settings', 'Settings', 'settings', 'The Settings dialog: calculation, editor, appearance and PDF export', 'settings'),
             ] },
             { name: 'Help', buttons: [
-                action('x-docs', 'Documentation', 'help', 'Open the CalcpadCE documentation (the worksheet language)', 'docs'),
+                action('x-docs', 'Documentation', 'help', 'Open the CivilKit Calcs user guide (civilkit.io, in a new tab)', 'docs'),
                 action('x-learn', 'Calculators\nand guides', 'learn', 'Ready-made calculators and how-to pages that open as sheets (civilkit.io, in a new tab)', 'learn'),
                 action('x-keys', 'Shortcuts', 'keyboard', 'List the keyboard shortcuts', 'shortcuts', 'small'),
                 action('x-changelog', 'Changelog', 'notes', 'What changed in each version (opens GitHub in a new tab)', 'changelog', 'small'),
