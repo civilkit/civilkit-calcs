@@ -173,7 +173,7 @@ P = Π k for k = 1 to 5 = 120
 | `$Repeat`, `$While`, `$Block`, `$Inline` | Iterative expression blocks. |
 | `$Plot`, `$Map` | Plots; see [Plots](../plots.md). |
 
-The relative precision of the numerical methods is the `Precision` setting (default 1e-12).
+The relative precision of the numerical methods is the `Precision` setting (default 1e-14).
 
 ## Python
 

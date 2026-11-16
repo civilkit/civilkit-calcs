@@ -35,8 +35,15 @@ The whole guide in one file: https://civilkit.io/calcs/llms-full.txt
 - [The Calcpad language](https://civilkit.io/calcs/guide/calcpad/): The sheet format is a front end.
 - [Directives and commands](https://civilkit.io/calcs/guide/calcpad/directives): A directive starts with # and controls the flow of the worksheet.
 - [Input forms with #UI](https://civilkit.io/calcs/guide/calcpad/ui-inputs): In a sheet, most inputs do not need it.
+- [Language rules](https://civilkit.io/calcs/guide/calcpad/language-rules): This page collects the rules of the Calcpad language that decide whether a line is accepted, how an expression is evaluated, and how the result is printed.
+- [Keyword arguments](https://civilkit.io/calcs/guide/calcpad/keyword-arguments): Functions and macros can name their arguments in a call (f(x = 5)) and can give parameters a default value.
+- [Numerical methods](https://civilkit.io/calcs/guide/calcpad/numerical-methods): Numerical commands solve what has no closed form: roots, extremes, integrals, derivatives, sums and loops, each written as one expression.
+- [Metadata comments](https://civilkit.io/calcs/guide/calcpad/metadata-comments): A metadata comment stores information about a document without printing it in the report.
+- [Linter messages](https://civilkit.io/calcs/guide/calcpad/linter-codes): The linter reads your worksheet while you type and marks problems before you run it.
+- [HTML and styling](https://civilkit.io/calcs/guide/calcpad/html-and-classes): A comment line is passed to the report as HTML, so you can colour a verdict, add a reference, rule a table or float a picture.
 - [Units](https://civilkit.io/calcs/guide/units): Units are part of the value.
 - [Vectors and matrices](https://civilkit.io/calcs/guide/vectors-matrices): In a sheet, a bracket makes a vector or a matrix.
+- [High-performance matrices](https://civilkit.io/calcs/guide/high-performance-matrices): An hp vector or matrix is a compact variant meant for large numerical models.
 - [Function and command reference](https://civilkit.io/calcs/guide/reference/functions): This page is generated from the editor's own snippet library (book/gen-reference.py), so it lists what the Insert tab and the ribbon offer.
 
 ## Plots and Python

@@ -18,6 +18,7 @@ page is a summary for users.
 | Nested blocks | A loop nested in an expression block cannot update the enclosing block's variable. | It can. |
 | Units in arrays | A vector or matrix writes the unit on every element. | It writes the unit once after the bracket (`[16; 12] ft`). `#settings {"unitPerElement": true}` restores the old display. |
 | Eigenvalues | `eigenvals`, `eigenvecs` and `eigen` take only a matrix of the symmetric type. | They take any square matrix; a symmetric literal no longer needs `copy(A, symmetric(n), 1, 1)`. `ceigenvals` and `ceigenvecs` return complex eigenvalues and eigenvectors. |
+| Generalized eigenvalues | The second argument is a count; a matrix there is an error. | `eigenvals(K; M)` solves K x = λ M x for a stiffness and a mass matrix. |
 | Markdown tables in Word | A table without the `bordered` class has no rules. | A Markdown pipe table is ruled. |
 | Word export | SVG pictures are embedded alone. Numbered lists lose their numbers. | An SVG is also written as a PNG for readers that lack SVG. Ordered lists are numbered. Unknown elements keep their content. |
 | Print header and footer | The server prints title, date and page numbers. | The browser prints; its own header and footer apply. |

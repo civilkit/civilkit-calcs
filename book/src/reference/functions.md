@@ -193,12 +193,15 @@ Where a typed alternative exists it is given; the editor converts it when a file
 | `take(a; b)` | Returns the n-th element from a list of scalars |
 | `take(a; b)` | Returns the n-th element from a vector |
 | `take(a; b)` | Returns the n-th element from a matrix |
+| `take(x; y; M)` | Returns the element of matrix M at row x and column y (a non-integer index is rounded) |
 | `line(a; b)` | Linear interpolation with scalar data pairs |
 | `line(a; b; c)` | Linear interpolation with x and y vectors |
 | `line(a; b)` | Linear interpolation over a linearized matrix |
+| `line(x; y; M)` | Bilinear interpolation in matrix M at row x and column y |
 | `spline(a; b)` | Hermite spline interpolation with scalar data pairs |
 | `spline(a; b; c)` | Hermite spline interpolation with x and y vectors |
 | `spline(a; b)` | Hermite spline interpolation over a linearized matrix |
+| `spline(x; y; M)` | Hermite spline interpolation in matrix M at row x and column y |
 
 ### Conditional and Logical
 
@@ -582,6 +585,8 @@ Directives start with `#`. The block forms (`#if` ... `#end if`) are listed once
 
 Written as an assignment on a line of their own. In a sheet, use a `>>` line.
 
+A setting value is an ordinary number: write `Precision = 0.000001`, not `1e-6` (the `1e-6` form in the rows below is shorthand and is refused on a line).
+
 | Form | Meaning |
 | --- | --- |
 | `PlotHeight = 400` | Height of plot area in pixels |
@@ -593,8 +598,8 @@ Written as an assignment on a line of their own. In a sheet, use a `>>` line.
 | `PlotShadows = 1` | Draw surface plots with shadows |
 | `PlotSmooth = 1` | Smooth gradient (1) or isobands (0) for surface plots |
 | `PlotLightDir = 0` | Direction to light source (0-7) clockwise |
-| `Precision = 1e-12` | Relative precision for numerical methods (10^-2 to 10^-16) |
-| `Tol = 1e-8` | Target tolerance for iterative PCG solver |
+| `Precision = 1e-14` | Relative precision for numerical methods (1e-15 to 1e-2) |
+| `Tol = 1e-6` | Target tolerance for iterative PCG solver |
 
 ## Number format strings
 

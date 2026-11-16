@@ -574,3 +574,16 @@ range 2 to 12.`), not a silent clamp.
 
 **Tests:** `calcpad-core/tests/ui_directive.rs` (`an_entry_with_bounds_*`), `calcpad-sheet/src/tests.rs`
 (`a_slider_input_*`), `web/e2e/inputs-check.mjs`.
+
+## D19. A second matrix gives the generalized eigenproblem (addition)
+
+**CalcpadCE:** the second argument of `eigenvals`, `eigenvecs` and `eigen` is the number of eigenvalues to return
+(`ne`); a matrix there fails with `Argument must be scalar.`
+
+**Here:** `eigenvals(K; M)`, `eigenvecs(K; M)` and `eigen(K; M)` with a second matrix solve K x = λ M x, the form a
+structural dynamics problem takes (stiffness K, mass M). A scalar second argument is still `ne`, so no worksheet
+changes meaning. Units carry over (K in N/m and M in kg give λ in s⁻²).
+
+**Why:** natural frequencies of a frame or a chimney are the common use, and they needed `inverse(M)*K` first.
+
+**Tests:** the worked example in `book/src/vectors-matrices.md` (checked by `book/check-examples.mjs`).

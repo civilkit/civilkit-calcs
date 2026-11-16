@@ -12,7 +12,11 @@ under "Crates" at the end, on plain 0.x semver, and are tagged `<crate-name>-v<v
 ## [Unreleased]
 
 ### Added
+- **Seven new guide pages** - Language rules (lines, brackets, precedence, number limits, rounding and format), Keyword arguments, Numerical methods (`$Root`, `$Inf`, `$Sup`, `$Area`, `$Slope`, `$Derivative`, `$Sum`, `$Product`, `$Repeat`, `$While`), Metadata comments, Linter messages (every code with its message and fix), HTML and styling in a worksheet (the report classes), and High-performance vectors and matrices. Every example on them is run by the guide check.
 - **Do not ask again for Python** - The question "This worksheet runs Python code" has a box, Do not ask again on this device. Tick it with Run Python and worksheets run their Python without the question; clearing the site's data in the browser brings the question back.
+
+### Fixed
+- **Guide corrections** - The default of `Precision` is 1e-14 (range 1e-15 to 1e-2) and of `Tol` 1e-6; the matrix forms `take(x; y; M)`, `line(x; y; M)` and `spline(x; y; M)` are listed; the generalized eigenproblem `eigenvals(K; M)` is recorded as a deviation; settings are written as ordinary numbers (`0.000001`, not `1e-6`).
 
 ### Changed
 - **Documentation opens our guide** - The Documentation button in the Help tab (and the desktop Help menu) opens the CivilKit Calcs user guide instead of the CalcpadCE documentation, which describes a language that differs more with each release. The Help page lists the guide first and keeps the CalcpadCE links as credit.

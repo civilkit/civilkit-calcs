@@ -20,8 +20,15 @@
   <url><loc>https://civilkit.io/calcs/guide/calcpad/</loc></url>
   <url><loc>https://civilkit.io/calcs/guide/calcpad/directives</loc></url>
   <url><loc>https://civilkit.io/calcs/guide/calcpad/ui-inputs</loc></url>
+  <url><loc>https://civilkit.io/calcs/guide/calcpad/language-rules</loc></url>
+  <url><loc>https://civilkit.io/calcs/guide/calcpad/keyword-arguments</loc></url>
+  <url><loc>https://civilkit.io/calcs/guide/calcpad/numerical-methods</loc></url>
+  <url><loc>https://civilkit.io/calcs/guide/calcpad/metadata-comments</loc></url>
+  <url><loc>https://civilkit.io/calcs/guide/calcpad/linter-codes</loc></url>
+  <url><loc>https://civilkit.io/calcs/guide/calcpad/html-and-classes</loc></url>
   <url><loc>https://civilkit.io/calcs/guide/units</loc></url>
   <url><loc>https://civilkit.io/calcs/guide/vectors-matrices</loc></url>
+  <url><loc>https://civilkit.io/calcs/guide/high-performance-matrices</loc></url>
   <url><loc>https://civilkit.io/calcs/guide/reference/functions</loc></url>
   <url><loc>https://civilkit.io/calcs/guide/plots</loc></url>
   <url><loc>https://civilkit.io/calcs/guide/python</loc></url>

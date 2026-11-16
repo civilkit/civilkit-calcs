@@ -2216,7 +2216,7 @@ P = Π k for k = 1 to 5 = 120
 | `$Repeat`, `$While`, `$Block`, `$Inline` | Iterative expression blocks. |
 | `$Plot`, `$Map` | Plots; see [Plots](../plots.md). |
 
-The relative precision of the numerical methods is the `Precision` setting (default 1e-12).
+The relative precision of the numerical methods is the `Precision` setting (default 1e-14).
 
 ## Python
 
@@ -2438,7 +2438,7 @@ ratio = M_star/M_cap
 #end if
 ```
 
-In a worksheet, **Save values** writes the entered values into a comment on the first line, and the
+In a worksheet, **Save values** writes the entered values into a comment on the first line (in a sheet, directly under the `<!--sheet-->` marker), and the
 browser opens the form only when you press **Input**. The Excel export has an **Inputs** sheet
 listing the variables set by input fields.
 
@@ -2456,6 +2456,1207 @@ Workarounds for behaviour that is to be fixed. This is the only list of them on 
   `?` form cannot do this: its default is always one of the options.) A match is by value, so a
   default such as `25kN/m` finds the option written `25 kN/m`.
 * **Two options cannot have the same value** in a `?` line. It is an error on that line.
+
+---
+
+Chapter: Language rules
+URL: https://civilkit.io/calcs/guide/calcpad/language-rules
+
+# Language rules: expressions, brackets and numbers
+
+<!-- description: The Calcpad language rules: how lines and brackets are read, operator precedence, variable naming, number limits, and how results are rounded and formatted. -->
+
+This page collects the rules of the Calcpad language that decide whether a line is accepted, how an expression is evaluated, and how the result is printed. The
+examples here are plain Calcpad language; in a sheet the same expressions work after a `>>` line
+or inside a `calcpad` fence. Trig functions use degrees unless you write `#rad`.
+
+## Lines
+
+Each line is one expression, a comment in quotes, or a directive. Do not end an expression with
+`=`: that is the assignment operator, and the result is added for you. A line that ends in `=`
+is an error.
+
+```text
+Error in "a = 2 =" on line [ 1 ]: Improper use of the assignment operator '='.
+```
+
+A long expression can be split in two ways:
+
+- end the line with `_` and carry on in the next line;
+- or just break the line after an open bracket `(` or after a `;` inside a bracket.
+
+```cpd
+x = 1 + _
+    2 + 3
+y = max(1;
+        3)
+z = (
+    1 + 2)
+```
+
+A break after an operator without `_` is not allowed: `x = 1 +` then `2` gives
+`Incomplete expression`, and the `2` on the next line is a separate expression.
+
+## Brackets
+
+Only round brackets group an expression. Square brackets make vectors and matrices (see
+[Vectors and matrices](../vectors-matrices.md)), and curly brackets are not an operator at all:
+`a = {2}` gives `Invalid symbol: "{"`.
+
+| Mistake | Message |
+| --- | --- |
+| `b = (2 + 3` | `Missing right bracket ")"` |
+| `c = 2 + )3` | `Missing left bracket "("` |
+| `d = sin 30` or `e = sqr 9` | `Invalid syntax`: a function name must be followed by `(` |
+| `k = 3`, then `m = k(2)` | `Invalid function: "k"`: a variable is not a function |
+
+The output adds brackets where they make the arithmetic unambiguous, even if you did not type
+them. A negative value that is substituted into a power, or a product, is shown in brackets:
+
+<!-- expect: a ^2 = (-2)^2 = 4 | -a = -(-2) = 2 | a · (-3) = -2 · (-3) = 6 -->
+```cpd
+a = -2
+a^2
+-a
+a*(-3)
+```
+
+## Operators and precedence
+
+From first to last, the order of evaluation is:
+
+| Level | Operators |
+| --- | --- |
+| 1 | `!` factorial |
+| 2 | `^` power (right to left) |
+| 3 | `*`, `/`, `\` (integer division), `⦼` or `%%` (remainder) |
+| 4 | `+`, `-` |
+| 5 | `<`, `>`, `≤`, `≥`, `≡`, `≠` (all the same level) |
+| 6 | `∧`, `∨`, `⊕` |
+
+Operators of the same level go from left to right, with one exception: `^` goes from right to
+left, so `2^3^2` is `2^(3^2) = 512`, not `(2^3)^2 = 64`. This is unlike many calculators and
+Excel. A unary minus comes after the power, so `-2^2` is `-4`; write `(-2)^2` for 4.
+
+<!-- expect: 2^3 2 = 512 | 2^3∙^2 = 64 | -(2^2) = -4 | 2 · 3 2 · 3 = 9 | 2^-1 = 0.5 -->
+```cpd
+2^3^2
+(2^3)^2
+-2^2
+2*3/2*3
+2^-1
+```
+
+The relational operators give 1 for true and 0 for false, so they can be used inside arithmetic.
+In the logical operators any nonzero value counts as true, and the result is again 1 or 0:
+
+<!-- expect: 5 and 2 = 1 | 0 or 7 = 1 | 7 mod 3 = 1 | = 3 -->
+```cpd
+5 && 2
+0 || 7
+7 %% 3
+a = 3
+b = 1
+a*(a ≥ b) + b*(a < b)
+```
+
+The shortcuts `==`, `!=`, `<=`, `>=`, `&&`, `||` and `%%` are replaced by the operators in the
+table. CalcpadCE's manual also lists `//` and `^^` as shortcuts, but neither works here nor in
+CalcpadCE itself: `7 // 2` gives `Invalid syntax: "/ /"` and `1 ^^ 1` gives `Invalid syntax: "^ ^"`.
+Write `÷` and `⊕` (or `∧`, `∨`) directly. `%` alone is kept for percent units and is not the
+remainder (`7 % 3` is `Invalid syntax`).
+
+A negative base with a fractional exponent has no real result: `(-8)^(1/3)` prints `Undefined`
+in the default real mode. Complex mode (below) gives `1 + 1.73i` at two decimals.
+
+## Variables
+
+A name is case sensitive: `A` and `a` are two variables. Letters, digits, `_` and the Greek and
+other letters are allowed. Everything after a `_` is a subscript in the output, so `x_1`
+prints as x with a small 1, and `x₁` (with a real subscript character) is a different variable
+from `x_1`.
+
+```cpd
+A = 1
+a = 2
+x_1 = 3
+x₁ = 4
+A + a
+x_1 + x₁
+```
+
+A variable must be defined above the line that uses it. Using a name that has not been defined
+yet gives `Undefined variable or units`, and the definition below it does not help:
+
+```text
+Error in "u = v + 1" on line [ 1 ]: Undefined variable or units: "v".
+```
+
+Short names can clash with units. `y` is the unit of a year, so `x = y + 1` gives
+`Inconsistent units: "y + unitless"` rather than the message above. Pick a name that is not a
+unit, or see [Units](../units.md).
+
+Assigning to a name again replaces its value for the lines that follow; lines above keep what
+they printed.
+
+<!-- expect: r = 1 | r = 5 | s = r + 1 = 5 + 1 = 6 -->
+```cpd
+r = 1
+r = 5
+s = r + 1
+```
+
+A `#const` cannot be replaced; see [Directives](directives.md).
+
+## Number limits
+
+A number is a double-precision value, about 15 significant digits.
+
+| You write | You get |
+| --- | --- |
+| `10^308*10` (beyond about 1.8E308) | `+∞` |
+| `-10^308*10` | `-∞` |
+| `1/0` | `+∞`; `-1/0` gives `-∞` |
+| `0/0` | `Undefined` |
+| `10^-330` (below about 4.9E-324) | `0` |
+| `3.4e+6` | error: `Error parsing "e" as units` |
+| `4.94065645841247E-324` | error: `Error parsing "E" as units` |
+
+There is no exponent notation for a literal. Write a power of ten instead:
+
+<!-- expect: 3.4 · 10^6 = 3400000 | 10^-330 = 0 -->
+```cpd
+3.4*10^6
+10^-330
+```
+
+An infinite or undefined result is shown, not raised as an error, but the engine marks it like
+one (the line turns red), so check for it:
+
+```text
+1/0 = +∞
+0/0 = Undefined
+```
+
+## Complex mode and polar entry
+
+Complex numbers are off until you switch them on. In the Calcpad language, put a settings line
+first; in the app it is also a switch in Settings. With it on, `i` is the imaginary unit (`1i`
+works too) and `A∠φ` enters a value by magnitude and angle, in degrees unless `#rad` is set:
+
+<!-- expect: z = 2 + 3i | 2 + 1i | 2.12 + 2.12i | 1 + 1.73i -->
+```cpd
+#settings {"complex": true}
+z = 2 + 3i
+w = 1i + 2
+p = 3∠45
+(-8)^(1/3)
+```
+
+`5 << 30` is a shortcut for `5∠30`. Comparing a complex value, as in `(1+2i) < 3`, gives
+`Undefined` rather than an error. Without the settings line both `2 + 3i` and `3∠45` are
+errors (`Error parsing "i" as units`, `Invalid symbol: "∠"`).
+
+This is an addition of CivilKit Calcs: CalcpadCE run on a file rejects both `i` entry and `∠`,
+with or without the setting, because its complex mode is a switch in the desktop program. See
+[Deviations from CalcpadCE](../appendix/deviations.md).
+
+## Rounding and number format
+
+The output shows `n` decimals, set by the **Decimals** setting. `#round n` changes it from that
+line on, `#round default` goes back. `n` is from 0 to 15, and a value outside that range is
+taken as the nearest limit: `#round -1` rounds like 0 and `#round 20` like 15. The keyword can
+be written `#Round` too.
+
+A small result would print as all zeros, so a value under 1 is shown with one digit more than
+`n` significant digits, and a very small one switches to the form `3.142×10-5`. With `#round 3`:
+
+<!-- expect: 10^-6 · π = 10^-6 · 3.142 = 3.142×10^-6 | 0.001 · π = 0.001 · 3.142 = 0.003142 | 0.1 · π = 0.1 · 3.142 = 0.3142 | 1 · π = 1 · 3.142 = 3.142 | 1000 · π = 1000 · 3.142 = 3141.593 -->
+```cpd
+#round 3
+0.000001*π
+0.001*π
+0.1*π
+1*π
+1000*π
+```
+
+The CalcpadCE manual shows `0.001*π` as `0.00314`, `0.1*π` as `0.314` and `1000*π` as `3141.59`
+for `#round 3`. Both engines actually print `0.003142`, `0.3142` and `3141.593`, as above;
+`#round 2` is what gives `0.00314`. Only the display is rounded: the stored value keeps its
+full precision.
+
+`#format` sets a format string for all following results, and `:` followed by a format string
+formats one value. Upper-case letters are the ones to use. Lower case `f2` also works, but `e2` prints `1.23e+002` in plain text, where `E2` prints the `×10` form shown below:
+
+| Format | Meaning | Example |
+| --- | --- | --- |
+| `F2` | fixed, 2 decimals | `123.456789:F2` gives `123.46` |
+| `E3` | exponent form | `123456.789:E3` gives `1.235×10+005` |
+| `N3` | number, 3 decimals | `0.0012345678:N3` gives `0.001` |
+| `G3` | general, 3 significant digits | `123456m:G3` gives `1.23×10 5 m` |
+| `C2` | currency, with the local symbol | not shown, depends on the locale |
+| `0.000e-00` | custom pattern | `0.12:0.000e-00` gives `1.200e-01` |
+
+<!-- expect: 123457 = 1.235×10^+005 | 123.46 = 123.46 | 0.00123 = 0.001 | 0.12 = 1.200e-01 | π = 3.1416 | π = 3.141592653589793 -->
+```cpd
+123456.789:E3
+123.456789:F
+0.0012345678:N3
+0.12:0.000e-00
+#format F4
+π
+#format default
+#round 15
+π
+```
+
+A letter with no number uses the current rounding (`F` above printed 2 decimals, the default here). The 0 to 15 limit belongs to `#round`; a format such as `F20` is not clamped and just
+prints extra digits that are not meaningful. A malformed format (`#format F-1`) gives `Invalid format string`
+and the previous format stays. The decimal separator in the app follows
+[Number format](../number-format.md).
+
+---
+
+Chapter: Keyword arguments
+URL: https://civilkit.io/calcs/guide/calcpad/keyword-arguments
+
+# Keyword arguments
+
+<!-- description: Call functions and macros by parameter name, give parameters default values, and follow the rules for string variables and macro names. -->
+
+Functions and macros can name their arguments in a call (`f(x = 5)`) and can give parameters a
+default value. This page also lists the rules for string variables and macro names that the
+[directives page](directives.md) only touches on.
+
+## Defaults in a function
+
+Write a default after the parameter with `=`. A parameter with a default is optional in a call.
+
+<!-- expect: f(5) = 1 | f(5; 3; 2) = 17 -->
+```cpd
+f(x; y = 0; z = 1) = x*y + z
+a = f(5; 3; 2)
+b = f(5)
+```
+
+Required parameters must come before optional ones in the definition. `f(x; y = 0; z) = x*y + z`
+is an error: `Required parameter "z" cannot follow an optional parameter.` A default can carry
+units, for example `y = 1kg`.
+
+## Positional and keyword arguments
+
+A call can pass arguments by position, by name (`name = value`), or both. Keyword arguments may
+come in any order. Once you use a keyword you cannot go back to positional arguments.
+
+<!-- expect: f(x = 5; z = 2; y = 3) = 17 | f(5; z = 2) = 2 | g(y = 1; x = 2) = 3 -->
+```cpd
+f(x; y = 0; z = 1) = x*y + z
+a = f(x = 5; z = 2; y = 3)
+b = f(5; z = 2)
+g(x; y) = x + y
+c = g(y = 1; x = 2)
+```
+
+`b` passes `x` by position, `z` by name and lets `y` take its default of 0. Keywords also work on
+functions that have no defaults, as `g` shows. The value after `=` is an ordinary expression:
+`f(x = a + 1)` evaluates `a + 1` first.
+
+### Errors
+
+These are all rejected, with the same message in CalcpadCE.
+
+| Call | Message |
+|---|---|
+| `f(1; x = 2)` (`x` already passed by position) | `Duplicate argument for parameter "x".` |
+| `f(q = 1)` (no parameter `q`) | `Unknown keyword argument: "q".` |
+| `f(y = 2; 3)` (positional after keyword) | `Invalid number of arguments.` |
+| `f()` (required `x` missing) | `Invalid syntax: "( )".` |
+
+Built-in functions take neither keywords nor defaults: `sin(x = 1)` is an error.
+
+## Macros with defaults
+
+A macro parameter ends in `$`, and so does its keyword. The call syntax is the same as for
+functions.
+
+<!-- expect: result = 1 + 2 + 3 = 6 | result = 1 + 2 + 7 = 10 | result = 1 + 10 + 7 = 18 -->
+```cpd
+#def calc$(a$; b$ = 10; c$ = 5)
+    result = a$ + b$ + c$
+#end def
+calc$(1; 2; 3)
+calc$(a$ = 1; c$ = 7; b$ = 2)
+calc$(1; c$ = 7)
+```
+
+When every parameter has a default, an empty call uses them all:
+
+<!-- expect: r = 10 · 5 = 50 | s = 3 · 4 = 12 -->
+```cpd
+#def area$(w$ = 10; h$ = 5)
+    r = w$*h$
+#end def
+area$()
+#def area2$(w$ = 10; h$ = 5) = w$*h$
+s = area2$(3; 4)
+```
+
+The same errors apply as for functions: a duplicate (`calc$(1; a$ = 3)`), an unknown keyword
+(`calc$(z$ = 3)`), a required parameter after an optional one in the definition, and a positional
+argument after a keyword. Defining the same parameter twice is also refused.
+
+### A default is text, not a value
+
+A macro default is pasted into the body as text, exactly like an argument. It is not evaluated
+first, so its unit takes part only after substitution:
+
+<!-- expect: r = 2 kg + 1 kg = 3 kg -->
+```cpd
+#def add$(a$; b$ = 1kg) = a$ + b$
+r = add$(2kg)
+```
+
+`add$(2)` fails with `Inconsistent units: "unitless + kg"`, because the text becomes `2 + 1kg`.
+
+A default may refer to a string variable defined earlier:
+
+<!-- expect: r = 2 · 12 kN = 24 kN -->
+```cpd
+#def load$ = 12kN
+#def force$(n$; p$ = load$) = n$*p$
+r = force$(2)
+```
+
+### Empty argument lists
+
+`name$()` with parentheses and nothing inside means different things depending on the macro.
+
+| Macro | `name$()` |
+|---|---|
+| Every parameter optional | All defaults are used. |
+| One required parameter | The parameter becomes empty text, so the body is likely a syntax error. |
+| Two or more required parameters | `Invalid number of arguments.` |
+
+The CalcpadCE page says an empty call passes empty strings to a macro without defaults. In both
+engines that only holds for one parameter; with two required parameters the call is refused.
+
+## String variables
+
+A string variable is a macro without parameters. It holds text that is pasted wherever you write
+its name, before the line is parsed.
+
+<!-- expect: a = 12 kN -->
+```cpd
+#def sv$ = 12kN
+a = sv$
+```
+
+A multi-line variable pastes several lines at once:
+
+<!-- expect: a = 1 | b = 2 -->
+```cpd
+#def pair$
+    a = 1
+    b = 2
+#end def
+pair$
+```
+
+## Naming rules
+
+| Rule | Detail |
+|---|---|
+| Ending | A variable, macro or parameter name must end in `$`. |
+| Characters | Letters, digits and `_`. The first character cannot be a digit. |
+| Case | Names are case sensitive: `m$` and `M$` are different, and `M$` is reported as `Macro not defined: M$.` |
+| Rejected | `#def 3bad$ = 7` gives `Invalid symbol "3" in macro name.` A `*` or `-` is rejected the same way. |
+| Inside a definition | Another `#def` is not allowed: `Invalid inside macro definition.` |
+| Input fields | `?` in a macro body gives `Undefined input field.` |
+
+The upstream CalcpadCE guide writes the inline macro form as `#def *macro_name$(...)`. The `*`
+is rejected by both engines (`Invalid symbol "*" in macro name`); leave it out.
+
+Digits are allowed after the first character:
+
+<!-- expect: r = 7 | r = 4 · 2 = 8 -->
+```cpd
+#def a1$ = 7
+r = a1$
+#def _my_v$ = 4
+r = _my_v$*2
+```
+
+A macro body may mention other macros or variables. They are looked up when the macro is called,
+so a variable defined after the macro still works if it exists at the call.
+
+## See also
+
+- [Directives and commands](directives.md) for `#def` basics and the other directives.
+- [Deviations from CalcpadCE](../appendix/deviations.md).
+
+---
+
+Chapter: Numerical methods
+URL: https://civilkit.io/calcs/guide/calcpad/numerical-methods
+
+# Numerical methods
+
+<!-- description: Solve equations, find extremes, integrate, differentiate and iterate in a worksheet with $Root, $Inf, $Sup, $Area, $Slope, $Sum, $Repeat and $While. -->
+
+Numerical commands solve what has no closed form: roots, extremes, integrals, derivatives, sums and
+loops, each written as one expression. A command has the form
+`$Name{expression @ variable = a : b}` and returns a number, so you can use it inside any
+expression or assign it to a name. The variable (`x`, `k`, `t`, any name) is local to the command:
+the worksheet's own `x` is not changed.
+
+| Command | Result |
+| --- | --- |
+| `$Root{f(x) @ x = a : b}` | A root of f in the interval |
+| `$Inf{f(x) @ x = a : b}`, `$Sup{...}` | A local minimum, a local maximum |
+| `$Area{f(x) @ x = a : b}`, `$Integral{...}` | The definite integral |
+| `$Slope{f(x) @ x = a}`, `$Derivative{...}` | The first derivative at a point |
+| `$Sum`, `$Product`, `$Repeat` | An iterated sum, product, or any repeated expression |
+| `$While{condition; expr; ...}` | A loop that runs while the condition holds |
+
+`$Root`, `$Inf`, `$Sup`, `$Area`, `$Integral`, `$Slope` and `$Derivative` work with real numbers
+only. `$Sum`, `$Product`, `$Repeat` and `$While` also work with complex numbers. Trig functions
+use degrees unless you write `#rad`, so the examples below say which they use.
+
+## Roots
+
+<!-- expect: $Root{f(x) = 0; x ∈ [2; 3]} = 2.09 | x ∈ [0; 2]} = 1.05 -->
+```cpd
+#rad
+f(x) = x^3 - 2*x - 5
+r = $Root{f(x) @ x = 2 : 3}
+q = $Root{cos(x) = 0.5 @ x = 0 : 2}
+```
+
+Write `= c` after the expression to solve f(x) = c instead of f(x) = 0.
+
+The method narrows the interval around a sign change, so `f(a)` and `f(b)` (after subtracting c)
+must have opposite signs. Two things follow:
+
+* A function that stays on one side of zero has no root to find. `$Root{x^2 + 1 @ x = -1 : 1}`
+  reports `No solution for`.
+* A function that only touches zero has no sign change either. `$Root{(x-1)^2 @ x = 0 : 3}`
+  reports `No solution for`, although x = 1 is a root.
+
+If the interval holds several roots you get only one of them. Plot the function first, then call
+`$Root` once per interval that brackets a single crossing:
+
+<!-- expect: x ∈ [-3; 0]} = -1 | x ∈ [0; 3]} = 1 -->
+```cpd
+a = $Root{x^2 - 1 @ x = -3 : 0}
+b = $Root{x^2 - 1 @ x = 0 : 3}
+```
+
+## Minimum and maximum
+
+`$Inf` finds a local minimum and `$Sup` a local maximum. The position where it occurs is stored in
+a variable named after the argument with `_inf` or `_sup` added: `x_inf`, `x_sup`, or `t_sup` if you
+wrote `@ t = ...`.
+
+<!-- expect: x ∈ [0; 6]} = -4 | x_inf = 2 -->
+```cpd
+v = $Inf{x^2 - 4*x @ x = 0 : 6}
+x_inf
+```
+
+If there is no local extreme inside the interval, you get the better of the two end values, and
+the stored position is that end. Here sine (in degrees) is still rising at 3, so the maximum is at
+the right-hand end:
+
+<!-- expect: x ∈ [0; 3]} = 0.0523 | x_sup = 3 -->
+```cpd
+h = $Sup{sin(x) @ x = 0 : 3}
+x_sup
+```
+
+With several local minima, one is returned, not necessarily the smallest. Narrow the interval
+around the one you want. The result variable is set by the command, so read it straight after the
+call: the next `$Inf` overwrites it.
+
+## Integrals
+
+<!-- expect: sin(x) d x = 2 | exp(-(x^2)) d x = 0.882 -->
+```cpd
+#rad
+A = $Area{sin(x) @ x = 0 : π}
+I = $Integral{exp(-x^2) @ x = 0 : 2}
+```
+
+Both give the definite integral, using different algorithms:
+
+* `$Area` is adaptive (Gauss-Lobatto). It copes with kinks and jumps, so use it when you are not
+  sure the function is well behaved.
+* `$Integral` (tanh-sinh) is sharper for smooth, continuous functions, and can fail outright on
+  others. Split the interval at the discontinuities and add the pieces, or use `$Area`.
+
+A step function shows the difference:
+
+<!-- expect: sign(x) d x = 1 -->
+```cpd
+c = $Area{sign(x) @ x = -1 : 2}
+```
+
+```text
+d = $Integral{sign(x) @ x = -1 : 2}
+Error: No solution for: $Integral{sign(x); x = -1...2}
+```
+
+A function that is undefined inside the interval, such as `1/x` across 0, is an error for both:
+`The function f(x) is not defined for x = 0`.
+
+## Derivatives
+
+<!-- expect: m = d d x x^3 | x = 2 = 12 | n = d d x x^3 | x = 2 = 12 -->
+```cpd
+m = $Slope{x^3 @ x = 2}
+n = $Derivative{x^3 @ x = 2}
+```
+
+| | `$Slope` | `$Derivative` |
+| --- | --- | --- |
+| Method | Finite differences with extrapolation | Complex step |
+| Accuracy | Within the Precision setting | Close to machine precision |
+| Function | Continuous and smooth near the point | Analytic only |
+| Nested commands | Allowed | Not allowed |
+
+`$Slope` is the safe default. It can contain another numerical command:
+
+<!-- expect: = 4 -->
+```cpd
+s = $Slope{$Area{t^2 @ t = 0 : x} @ x = 2}
+```
+
+`$Derivative` fails quietly on a function that is not analytic. It returns 0 for `abs(x)` at x = 2
+(the true slope is 1) and 0 when the function contains `$Area`, with no error. Use `$Slope` for
+those. CalcpadCE behaves the same way.
+
+## Sums and products
+
+<!-- expect: = 1.63 | ∑ | = 120 | = 120 -->
+```cpd
+S = $Sum{1/k^2 @ k = 1 : 100}
+P = $Product{k @ k = 1 : 5}
+C = $Product{(i + 10 - 3)/i @ i = 1 : 3}
+```
+
+`$Sum` and `$Product` step `k` upward in whole numbers from `a` to `b`, so keep a below b. With
+`a` above `b` the command does not count down: `$Sum{k @ k = 5 : 2}` returns 5 and
+`$Product{k @ k = 3 : 1}` returns 3, one term each. The body does not have to use `k`:
+`$Sum{7 @ k = 1 : 3}` adds 7 three times and gives 21.
+
+The `C` line above is the binomial coefficient C(10; 3) built as a product. It avoids the
+large intermediate factorials of `fact(10)/(fact(3)*fact(7))`, so it stays accurate for large n.
+
+## Repeat
+
+`$Repeat{expression @ k = a : b}` evaluates the expression once per value of `k` and returns the
+last result. On its own that equals a sum or product written the slow way. It earns its place when
+the expression assigns to a variable that the next pass reads:
+
+<!-- expect: inside = g(0.1) = 0.113 -->
+```cpd
+g(c) = $Repeat{z = z^2 + c @ i = 1 : 100}
+inside = g(0.1)
+```
+
+This is the Mandelbrot iteration. Starting from `z = 0`, the sequence settles near 0.1127 for
+c = 0.1, which means 0.1 is inside the set. Assignments inside the loop are local to it, which is
+why `z` starts from 0 on every call without you resetting it.
+
+For a point outside the set the value grows without bound. With real numbers the sequence
+overflows and the call stops with `The function z = z^2 + c is not defined for i = 12` (c = 1).
+Switch on complex numbers to iterate with a complex `c`. A complex point outside the set, such as
+1 + 1i, ends as `+∞` instead of an error:
+
+<!-- expect: = 0.23 -->
+```cpd
+#settings {"complex": true}
+g(c) = $Repeat{z = z^2 + c @ i = 1 : 100}
+a = abs(g(0.1 + 0.2i))
+```
+
+See [Vectors and matrices](../vectors-matrices.md) for the complex setting, and
+`mandelbrot(x; y)` in the [function reference](../reference/functions.md) for a built-in version.
+
+## While
+
+`$While{condition; expr1; expr2; ...}` runs the expressions as long as the condition is true and
+returns the last value. A variable you create inside with `=` is local to the loop, even if the
+name already exists outside. To change an outer variable on purpose, assign with `←`:
+
+<!-- expect: n ← n + 3 = 12 -->
+```cpd
+n = 0
+u = $While{n < 10; n ← n + 3}
+```
+
+The loop stops once `n` reaches 12 and the outer `n` holds that value. Written with `=` instead,
+`n = n + 3` makes a new local `n` on each pass while the condition keeps reading the outer `n`,
+which never changes. The loop cannot end, and after a long wait (it can be minutes) you get:
+
+```text
+Possibly infinite loop detected, n > 1000000000 iterations
+```
+
+A condition that can never become false does the same. If a `$While` seems to hang, check that the
+loop variable is updated with `←`.
+
+## Precision
+
+The `Precision` setting is the relative precision the root, extreme, integral and derivative
+commands aim for. The default is 1e-14 and the allowed range is 1e-15 to 1e-2. Set it on its own
+line with a decimal number, or in `#settings`:
+
+<!-- expect: = 1.414211 | = 1.414214 -->
+```cpd
+#round 6
+Precision = 0.01
+a = $Root{x^2 = 2 @ x = 0 : 3}
+Precision = 0.00000000000001
+b = $Root{x^2 = 2 @ x = 0 : 3}
+```
+
+A loose precision gives an answer correct to fewer digits (1.414211 against
+1.414214 above). Tighten it only if a result must hold more digits than the default gives.
+In `#settings` JSON you may write `{"precision": 1e-6}`; on an assignment line `1e-6` is not
+accepted, because the `e` is read as the constant e. Spell the number out, as above.
+
+## When a command fails
+
+| Symptom | Cause and fix |
+| --- | --- |
+| `No solution for: $Root{...}` | No sign change in the interval, or a double root that only touches zero. Plot, then bracket a crossing. |
+| `No solution for: $Integral{...}` | Discontinuity or a singularity. Use `$Area`, or split the interval. |
+| `The function f(x) is not defined for x = ...` | The expression is undefined at a point the method tried. Narrow the interval. |
+| `$Derivative` returns 0 or a wrong value | Function is not analytic or contains another command. Use `$Slope`. |
+| `Possibly infinite loop detected` | The `$While` condition never turns false. Update the variable with `←`. |
+| Wrong angle in a trig function | Angles are degrees by default. Add `#rad`. |
+
+---
+
+Chapter: Metadata comments
+URL: https://civilkit.io/calcs/guide/calcpad/metadata-comments
+
+# Metadata comments
+
+<!-- description: Metadata comments are HTML comments holding JSON that the report hides: definition notes, PDF page setup and the input values Save values writes. -->
+
+A metadata comment stores information about a document without printing it in the report. It is a
+JSON object inside an HTML comment, written on a comment line.
+
+## What the engine accepts
+
+A metadata comment is an ordinary comment line (it starts with `'` or `"`) that holds `<!--{ ... }-->`:
+
+<!-- expect: A(3; 4) = 12 | Visible note -->
+```cpd
+'<!--{"desc": "Cross-sectional area"}-->
+A(b; h) = b*h
+A(3; 4)
+'Visible note
+```
+
+The engine writes the comment into the HTML output as a raw HTML comment, so it is hidden when the
+page is shown and is still in the file. Nothing in it is calculated, and the lines around it
+calculate as usual.
+
+| Form | Where it goes | What it is for |
+| --- | --- | --- |
+| `{"desc": ...}` with `paramTypes`, `paramDesc`, `returnType` | The line directly above a variable, function, macro or unit | A description and parameter notes for the editor |
+| `{"pdf": {...}}` | Anywhere in the document | Page setup of the document's own PDF |
+| `{"uiOverrides": {...}}` | Under the `<!--sheet-->` line of a sheet | Input values kept by **Save values** |
+
+These are the forms this guide covers. The engine copies each of them to the output unchanged, as
+the example above shows for `desc`; the editor and the app are what act on them.
+
+## Rules for writing one
+
+* Keep the whole comment on one line.
+* The text inside has to be valid JSON. The engine does not check it: a comment such as
+  `'<!--{bad json}-->` is copied to the output and the sheet calculates as before.
+
+<!-- expect: x = 1 | x + 1 = 1 + 1 = 2 -->
+```cpd
+'<!--{bad json}-->
+x = 1
+x + 1
+```
+
+A plain HTML comment line that does not start with `'` is not a comment to the engine. It is read
+as a formula and fails with `Missing operand`, so always put the `'` first.
+
+## Describing a definition
+
+Put a `desc` comment on the line directly above what it describes. The other keys name the kind
+of value each argument takes (`value`, `vector`, `matrix` or `any`), a short note for each
+argument in order, and what a function returns:
+
+<!-- expect: I(2; 3) = 4.5 -->
+```cpd
+'<!--{"desc": "Second moment of area of a rectangle", "paramTypes": ["value", "value"], "paramDesc": ["width", "height"], "returnType": "value"}-->
+I(b; h) = b*h^3/12
+I(2; 3)
+```
+
+The calculation is the same with or without the comment. The notes are for people reading the
+source and for editor hints.
+
+## Page setup of the PDF
+
+A document can carry its own PDF page setup, for example
+`{"pdf": {"format": "A4", "orientation": "landscape", "marginTop": "2cm"}}`. The engine passes this
+comment through like any other. [Exporting](../exporting.md) says that the page of **Print PDF**
+and the **Pages** view comes from the Settings, Export tab "or the document's own PDF settings";
+see that page for where the settings are changed.
+
+## Saved input values
+
+The Input view keeps the values you type in the page, not in the file. **Save values** writes them
+to a `uiOverrides` comment. The keys in it are the input name and a counter, as in `"L:1"`.
+[Input lines](ui-inputs.md) describes the Input view and what saving does, and
+[Templates](../templates.md) shows the saved line in a sheet:
+
+```text
+<!--sheet-->
+'<!--{"uiOverrides":{"L:1":"8"}}-->
+```
+
+In short:
+
+* The comment is a metadata comment like the others: the report does not print it.
+* A saved value belongs to the input's name. If you rename an input, the value saved under the old
+  name is not used any more.
+* Delete the comment line to go back to the defaults. **Update defaults** writes the values into
+  the lines instead and removes them from the comment.
+* The engine does not read `uiOverrides`. The Input form applies it, so a calculation on the
+  command line shows the default:
+
+<!-- expect: L = 6 m | M = L · 2 = 6 m · 2 = 12 m -->
+```cpd
+'<!--{"uiOverrides":{"L:1":"8"}}-->
+#UI L = 6m
+M = L*2
+```
+
+Here the saved `8` is not used and `L` stays `6 m`. In the app, Input mode and the report apply the
+saved value, and Preview shows the defaults.
+
+## What the report and the exports do
+
+The comment is an HTML comment, so a browser does not draw it: it is not part of the report you read
+or print. It stays in the saved file and in the HTML the engine writes. The pages for
+[Exporting](../exporting.md) say what each export contains. How Word and Excel treat these
+comments was not checked.
+
+## See also
+
+* [Input lines](ui-inputs.md): `#UI`, the Input view and Save values
+* [Templates](../templates.md): sheets and the saved line
+* [Exporting](../exporting.md): PDF settings and the Pages view
+* [Directives and commands](directives.md): comments and text modes
+
+---
+
+Chapter: Linter messages
+URL: https://civilkit.io/calcs/guide/calcpad/linter-codes
+
+# Linter messages
+
+<!-- description: The editor's linter marks mistakes with a CPD code as you type: what it checks, how it shows, every code with its fix, and how to silence one. -->
+
+The linter reads your worksheet while you type and marks problems before you run it. Each mark
+carries a code that starts with `CPD-`, such as `CPD-3301`, and a message. This page lists the
+codes and what to do about each.
+
+## What it checks and where it shows
+
+The linter looks at the whole worksheet, including the files it pulls in with `#include`, and
+checks these: `#include` lines, macro definitions, brackets and blocks, names (variables,
+functions, macros, units) and how they are used, and the metadata comments and `#UI` lines. It
+works on a sheet too: the sheet is turned into a Calcpad worksheet first, and the marks are
+shown on your sheet lines.
+
+It runs about half a second after you stop typing, and again when you switch tabs or refresh.
+You see it in three places:
+
+* **Underlines** in the source: red for an error, yellow for a warning, blue for information.
+  Hover over one to read the code and the message.
+* **The Errors dialog** (**Errors and warnings**), from the ribbon or the status bar, lists the
+  marks of the open file.
+* **The status bar** shows the number of errors, warnings and information marks.
+
+The linter runs in the editor only. The command-line `Cli` and the engine do not lint, so a
+worksheet that has lint marks can still calculate, and some errors that the engine reports
+(an undefined name, say) are also caught by the linter before you run.
+
+### Choosing how much to show
+
+**Settings > Editor > Linter Minimum Severity** has three choices: *Error*, *Warning* and
+*Information (all)*. A mark below the level you choose is hidden, from the underlines and from
+the Errors dialog alike. The default is *Information (all)*. Changing it takes effect at once.
+
+Most worksheets show many `CPD-3312` marks at the default, because every value you calculate
+and never use again counts as unused. Set the minimum to *Warning* to hide them.
+
+## Reading a message
+
+A message has the text of the code, then a colon and a detail about your line, for example
+`Undefined variable: 'zz'`.
+The tables below give the text of each code. Where the detail is a name or a count from your
+line, it is not repeated here.
+
+## Includes
+
+| Code | Severity | Message | Fix |
+| --- | --- | --- | --- |
+| CPD-1101 | Error | Malformed #include statement | Write `#include name.cpd`. |
+| CPD-1102 | Error | Missing #include filename | Add the file after `#include`. |
+| CPD-1103 | Warning | Deprecated #include input values | Remove the `#{...}` values and declare the inputs with `#UI` in the included file. |
+
+## Macros
+
+| Code | Severity | Message | Fix |
+| --- | --- | --- | --- |
+| CPD-2201 | Error | Duplicate macro definition | Rename one of them or delete the second. |
+| CPD-2202 | Error | Macro name must end with '$' | Write `#def name$`. |
+| CPD-2203 | Error | Macro parameter must end with '$' | Write `p$` in the parameter list. |
+| CPD-2204 | Error | Invalid macro name (must start with a letter) | Start the name with a letter. |
+| CPD-2205 | Error | Malformed #def syntax | Write `#def name$` or `#def name$(p1$; p2$)`. |
+| CPD-2206 | Error | Unmatched #def or #end def | Pair every `#def` with an `#end def`. |
+| CPD-2207 | Error | Nested macro definition not allowed | Close the first macro before starting the next. |
+| CPD-2208 | Error | Macro parameter must start with a letter | Start the parameter with a letter. |
+| CPD-2209 | Warning | Macro definition inside a control block has no effect | Move the `#def` out of the `#if` or loop. |
+| CPD-2210 | Error | Invalid character in macro name | Use ASCII letters, digits and underscores. |
+| CPD-2211 | Error | Invalid character in macro parameter | Use ASCII letters, digits and underscores. |
+| CPD-2212 | Error | Duplicate macro parameter | Give each parameter its own name. |
+| CPD-2213 | Error | Required parameter after optional parameter | Put the optional parameters last. |
+
+## Brackets and blocks
+
+| Code | Severity | Message | Fix |
+| --- | --- | --- | --- |
+| CPD-3101 | Error | Unmatched opening parenthesis | Add the closing `)`. |
+| CPD-3102 | Error | Unmatched closing parenthesis | Remove it or add the opening `(`. |
+| CPD-3103 | Error | Unmatched opening square bracket | Add the closing `]`. |
+| CPD-3104 | Error | Unmatched closing square bracket | Remove it or add the opening `[`. |
+| CPD-3105 | Error | Unmatched opening curly brace or control block | Add the closing `}`, or the `#end if` or `#loop` of the block. |
+| CPD-3106 | Error | Unmatched closing curly brace | Remove it or add the opening `{`. |
+
+## Names
+
+| Code | Severity | Message | Fix |
+| --- | --- | --- | --- |
+| CPD-3201 | Error | Invalid variable name (must start with a letter) | Start the name with a letter. |
+| CPD-3202 | Error | Invalid function name | Start the name with a letter. |
+| CPD-3203 | Error | Function name conflicts with a built-in function | Pick another name. |
+| CPD-3204 | Error | Variable name conflicts with a keyword | Pick another name. |
+| CPD-3205 | Warning | Variable name conflicts with a built-in constant | Pick another name. |
+| CPD-3206 | Error | Function must have at least one parameter | Add a parameter, or make it a variable. |
+| CPD-3207 | Error | Required parameter after optional parameter in function definition | Put the optional parameters last. |
+
+## Usage
+
+| Code | Severity | Message | Fix |
+| --- | --- | --- | --- |
+| CPD-3301 | Error | Undefined variable | Define it above the line, or fix the spelling. |
+| CPD-3302 | Error | Function called with the wrong number of parameters | Match the number in the definition. |
+| CPD-3303 | Error | Undefined macro | Define it with `#def` above the line. |
+| CPD-3304 | Error | Macro called with the wrong number of parameters | Match the number in the definition. |
+| CPD-3305 | Error | Undefined function | Define it above the line, or fix the spelling. |
+| CPD-3306 | Warning | Invalid element access | Index only vectors and matrices. |
+| CPD-3307 | Error | Too few parameters | Add the missing arguments of the built-in function. |
+| CPD-3308 | Error | Too many parameters | Remove the extra arguments. |
+| CPD-3309 | Warning | Parameter type mismatch | Pass a value of the type the function expects. |
+| CPD-3310 | Error | Undefined unit | Fix the unit name; see [Units](../units.md). |
+| CPD-3311 | Error | Empty parameter in a function call | Fill in the empty argument or delete its `;`. |
+| CPD-3312 | Information | Unused variable | Use the value, or ignore the mark. |
+| CPD-3313 | Information | Redefinition of existing function | Rename one of the functions. |
+| CPD-3314 | Error | Unknown keyword argument | Use a parameter name from the macro. |
+| CPD-3315 | Error | Unknown keyword argument in function call | Use a parameter name from the function. |
+
+## Semantics
+
+| Code | Severity | Message | Fix |
+| --- | --- | --- | --- |
+| CPD-3401 | Error | Invalid operator usage | Replace operators such as `++`, which Calcpad does not have. |
+| CPD-3402 | Error | Unknown command name | Check the spelling of the `$` command. |
+| CPD-3403 | Error | Unknown directive | Check the spelling of the `#` directive. |
+| CPD-3404 | Warning | Invalid assignment (multiple assignments on the same line) | Put each assignment on its own line. |
+| CPD-3405 | Error | # directive not allowed inside a command block | Use `if()`, `$Repeat` and the like inside the braces. |
+| CPD-3406 | Error | Invalid command syntax | Write `@ variable = start : end`. |
+| CPD-3407 | Error | Incomplete expression | Finish the right-hand side. |
+| CPD-3408 | Error | Command variable mismatch | Use the loop variable the command declares. |
+| CPD-3409 | Error | Reassignment of a constant | Do not assign to a name you defined as a constant. |
+| CPD-3410 | Error | Outer-scope assignment (←) to an undefined variable | Define the variable before the block. |
+
+## Metadata comments, #settings and #UI
+
+| Code | Severity | Message | Fix |
+| --- | --- | --- | --- |
+| CPD-3411 | Warning | Invalid paramType value in a metadata comment | Use a value the comment accepts. |
+| CPD-3412 | Warning | Invalid metadata-comment JSON | Fix the JSON, or the unknown property name. |
+| CPD-3413 | Warning | Invalid #settings JSON | Fix the JSON after `#settings`. |
+| CPD-3414 | Warning | Invalid PDF settings in a metadata comment | Check the PDF properties. |
+| CPD-3415 | Warning | Invalid #UI format | Write `#UI` with a variable assignment. |
+| CPD-3416 | Warning | 'uiOverrides' metadata comment not on the first line | Move it to the first line of the file. |
+| CPD-3417 | Warning | Duplicate 'uiOverrides' metadata comment | Keep one; only the first is read. |
+| CPD-3418 | Warning | 'uiOverrides' sharing a comment with another key | Give `uiOverrides` a comment of its own. |
+| CPD-3419 | Warning | Deprecated stored input value | Replace `?{...}` with `#UI`. |
+| CPD-3601 | Warning | Invalid format specifier | Use a format of the form the `#format` directive takes. |
+| CPD-3801 | Error | The #python block has no '#end python' line | Close the block; see [Python](../python.md). |
+
+## Examples
+
+Most of these marks match an error the engine gives when you run the worksheet. A line the
+engine rejects is shown as text, then the corrected version as a worksheet.
+
+An undefined name (`CPD-3301`). The engine says `Undefined variable or units: "zz"`:
+
+```text
+q = zz + 1
+```
+
+```cpd
+zz = 2
+q = zz + 1
+```
+
+The wrong number of arguments (`CPD-3302`). The engine says `Invalid number of arguments`:
+
+```text
+f(x; y) = x + y
+z = f(1)
+```
+
+<!-- expect: z = f(1; 2) = 3 -->
+```cpd
+f(x; y) = x + y
+z = f(1; 2)
+```
+
+A bracket left open (`CPD-3101`). The engine says `Missing right bracket ")"`:
+
+```text
+x = (1 + 2
+```
+
+<!-- expect: x = 1 + 2 = 3 -->
+```cpd
+x = (1 + 2)
+```
+
+A unit the engine does not know (`CPD-3310`). It says `Error parsing "foo" as units`:
+
+```text
+a = 3 foo
+```
+
+<!-- expect: a = 3 m -->
+```cpd
+a = 3 m
+```
+
+A macro defined twice (`CPD-2201`). The engine says `Duplicate macro name: "m$"`:
+
+```text
+#def m$
+    1
+#end def
+#def m$
+    2
+#end def
+```
+
+<!-- expect: 1 = 1 -->
+```cpd
+#def m$
+    1
+#end def
+m$
+```
+
+A name the engine reserves (`CPD-3203`, `CPD-3205`, `CPD-3409`). Defining your own `sin` gives
+`"sin" is a built-in function and cannot be redefined`, and assigning to `π` gives
+`Cannot modify constant "π"`:
+
+```text
+sin(x) = x
+π = 3
+```
+
+<!-- expect: y = sin(30) = 0.5 -->
+```cpd
+y = sin(30)
+```
+
+## Silencing a message
+
+Wrap the lines in a pair of metadata comments. `LintIgnore` lists the codes to hide from that
+line on, and `EndLintIgnore` ends the region. Codes are not case sensitive.
+
+<!-- expect: x = 1 -->
+```cpd
+'<!--{"LintIgnore": ["CPD-3312"]}-->
+x = 1
+'<!--{"EndLintIgnore": []}-->
+```
+
+* An empty list, `"LintIgnore": []`, hides every code until the matching `EndLintIgnore`.
+* `EndLintIgnore` with codes ends just those; with an empty list it ends all open regions.
+* A region left open runs to the end of the file.
+
+Suppression hides the mark only. It does not change the calculation, so wrapping a line that the
+engine rejects, such as `q = zz`, still gives the engine's error when you run it. The comments
+are printed in the results as ordinary text comments.
+
+## See also
+
+* [Directives and commands](directives.md) for `#def`, `#include`, `#if` and the loops.
+* [Troubleshooting](../troubleshooting.md) for the messages the engine gives when you run.
+
+---
+
+Chapter: HTML and styling
+URL: https://civilkit.io/calcs/guide/calcpad/html-and-classes
+
+# HTML and styling in a worksheet
+
+<!-- description: Put HTML in comment lines, use the report's ready-made CSS classes, and see what print, Word and Excel do with them. -->
+
+A comment line is passed to the report as HTML, so you can colour a verdict, add a reference, rule a table or float a picture. This page covers the HTML you can write, the classes the report already styles, and what each output does with them.
+
+## HTML in comment lines
+
+A line that starts with `'` is a comment, and everything after the quote is copied to the report as written. The closing quote is optional at the end of a line. Anything outside quotes is read as math, so HTML must always sit inside a comment.
+
+<!-- expect: Beam | B1 | Results -->
+```cpd
+'Beam <b>B1</b>: span L<sub>eff</sub> = 6 m, f<sup>2</sup> check
+"Results
+x = 2
+```
+
+Tags that work as you would expect in a web page: `<b>`, `<i>`, `<u>`, `<s>`, `<sup>`, `<sub>`, `<br/>`, `<hr/>`, `<p>`, `<ul>`/`<ol>`/`<li>`, `<h3>` to `<h6>`, `<span style="color:red;">`, `<table>` and `<img>`. A line that starts with `"` is a heading: it is written as an `<h3>`.
+
+Math inside a comment is not calculated. To colour or style a real expression, close the comment before it and open a new one after it. The two comments carry the opening and closing tags:
+
+<!-- expect: as simple as | 2 + 2 = 4 -->
+```cpd
+'<span style="color:#b00020;"> as simple as '
+2 + 2
+'</span>
+```
+
+The tags enclose the result line, and the whole line is coloured. Keep the quotes balanced: a stray tag outside a comment is parsed as math and gives an error.
+
+## Predefined classes
+
+The report stylesheet defines a few classes for the things engineering sheets need most. Assign one to an element with `class="..."`. Each one below was checked to change the report on this engine.
+
+| Class | On | Effect in the report |
+| --- | --- | --- |
+| `err` | `span`, `p`, `div` | Crimson text on a light red background. For a failed check. |
+| `ok` | `span`, `p`, `div` | Green text on a light green background. For a passed check. |
+| `ref` | `span`, `p` | Floats to the right edge, green on pale green. For a code clause or an equation number. |
+| `bordered` | `table` | Grid lines, a shaded and centred header row, some space above. |
+| `data` | `table` | First column left aligned, the other columns right aligned. No lines. |
+| `side` | `img` | Floats to the right (same as `style="float:right"`), at most half the width, so the text wraps beside it. |
+| `fold` | `div` | See the note below. |
+
+<!-- expect: Check: | satisfied | EN 1992 | Mu | 120.5 -->
+```cpd
+'<span class="ok">Check: the section is satisfied</span>
+'<span class="ref">[EN 1992-1-1, 9.2.2]</span>
+'<table class="bordered"><thead><tr><th>Bar</th><th>Mu (kN·m)</th></tr></thead>
+'<tbody><tr><td>T12</td><td>120.5</td></tr></tbody></table>
+```
+
+A pass-or-fail message that follows the calculation is the usual use of `err` and `ok`:
+
+```cpd
+M = 50 kN*m
+#if M < 100 kN*m
+    '<span class="ok">Bending: satisfied</span>
+#else
+    '<span class="err">Bending: not satisfied</span>
+#end if
+```
+
+Classes only style the elements that carry them. `ok` and `err` do not change a result's colour; put them on the comment around it. A class you invent that the stylesheet does not know does nothing.
+
+### Pictures
+
+`<img>` works in a comment. Use a full URL (or a path relative to the worksheet), and either `class="side"` or `style="float:right"` to let the text wrap beside the picture. Without a float the picture sits in the text flow and splits it. In the browser a picture's width never goes beyond the page.
+
+```text
+'<img class="side" src="https://example.com/site-plan.png" alt="Site plan">
+```
+
+### Folding
+
+`<div class="fold">` clips the block to its first line, with a small arrow after it. CalcpadCE opens it on a click. In the CivilKit Calcs report I found no click handler: the block stays clipped, on screen and in print, so the hidden lines cannot be read there. Do not use it to hide working you still want readers to see. In a sheet, a heading marked `{collapse}` folds and unfolds properly: see [Collapsing sections](../editing.md#collapsing-sections).
+
+## Markdown in comments
+
+Turn Markdown on for comment lines with `#md on` and off with `#md off`. The syntax then includes the usual emphasis and headings and these extensions:
+
+| Write | Result |
+| --- | --- |
+| `++text++` | underlined |
+| `~~text~~` | struck through |
+| `==text==` | highlighted |
+| `x^2^` | superscript |
+| `y~i~` | subscript |
+| `> text` | block quote |
+
+<!-- expect: bold | highlighted | under | strike | quote -->
+```cpd
+#md on
+'**bold** ==highlighted== ++under++ ~~strike~~ x^2^ y~i~
+'> quote
+#md off
+```
+
+Without `#md on`, a comment line is HTML only: `'**not bold**` is printed with the stars.
+
+## Text blocks
+
+`#html` ... `#end html` writes its lines as raw HTML, with no leading quote on each line. `#markdown` ... `#end markdown` does the same for Markdown. Use them for longer passages; `#cpd` goes back to calculation inside one. They share the classes above: `<p class="ok">` works in an `#html` block.
+
+<!-- expect: Note | inside a block -->
+```cpd
+#html
+<p class="ok">Note: written inside a block</p>
+#end html
+#markdown
+**Note** inside a block
+#end markdown
+```
+
+Highlighting with `==text==` inside a `#markdown` block is written as `≡text≡`. Use `<mark>` there, or `#md on` comment lines. Lines inside `#hide` ... `#show` are not written to the report, HTML or not.
+
+## What each output does with it
+
+| Output | What happens |
+| --- | --- |
+| Report on screen | All of the above, drawn by the report stylesheet. |
+| Print / PDF | The same stylesheet. A `side` picture is scaled to 80%. A `fold` block stays clipped. |
+| Save HTML | The tags and classes are kept, with the stylesheet, so the page looks as on screen. |
+| Word | `err` and `ok` keep their colour and shading, on a `<span>` or a `<p>`. `ref` is right aligned and shaded when it is on a `<p>`; on a `<span>` it is plain text. `bordered` tables keep grid lines. `side` and `float:right` pictures are embedded and placed on the right. `sup`, `sub`, `u`, `s` and `mark` keep their form. A `fold` block is written out in full. A `data` table is written plainly, with no alignment rule. |
+| Excel | The text is kept in the Report sheet. Colour, borders and floats are not carried, and a table becomes a cell range. |
+
+See [Exporting](../exporting.md) for how to run each one.
+
+One quirk in Word: comment lines made only of inline HTML (a bare `<span>`) are joined with the line after them into one paragraph, and such a line directly before a table lands in the table's first cell. Wrap each comment in `<p>...</p>` to keep them apart. CalcpadCE behaves the same.
+
+## Not here
+
+The desktop toolbar buttons, MathType and Word templates of CalcpadCE do not exist in CivilKit Calcs. In a sheet, the ribbon's **Text Formatting** tab inserts the same tags and classes for you.
 
 ---
 
@@ -3071,6 +4272,208 @@ cell ranges and separators are in the [directive list](reference/functions.md#di
 
 ---
 
+Chapter: High-performance matrices
+URL: https://civilkit.io/calcs/guide/high-performance-matrices
+
+# High-performance vectors and matrices
+
+<!-- description: High-performance (hp) vectors and matrices in the Calcpad language: constructors, the one-unit rule, typing, solver requirements and special matrix types. -->
+
+An hp vector or matrix is a compact variant meant for large numerical models. It stores the numbers
+together with a single unit for the whole object, which is what makes it faster and smaller than an
+ordinary vector or matrix. In a calculation it behaves like the ordinary one, with the rules below.
+The examples on this page are written in the Calcpad language (`;` separates arguments, `|` separates
+matrix rows); see [Vectors and matrices](vectors-matrices.md) for the basics.
+
+## Creating hp objects
+
+The constructors have the same arguments as the ordinary ones, with `_hp` added to the name.
+
+| Function | Result |
+| --- | --- |
+| `vector_hp(n)` | empty hp vector of length n |
+| `range_hp(x1; xn; s)` | hp vector from a range of values |
+| `matrix_hp(m; n)` | empty hp matrix, m by n |
+| `identity_hp(n)` | identity matrix |
+| `diagonal_hp(n; d)` | diagonal matrix with d on the diagonal |
+| `column_hp(m; c)` | m by 1 matrix filled with c |
+| `utriang_hp(n)`, `ltriang_hp(n)` | upper or lower triangular matrix |
+| `symmetric_hp(n)` | symmetric matrix |
+
+`hp(x)` converts an ordinary vector or matrix, so you can fill one from a bracket list.
+`ishp(x)` tells you whether a value is hp (1) or not (0). The conversion copies every element, so use it
+for small arrays and build large ones with the constructors.
+
+<!-- expect: [ 1 2 0.3 ] m | ishp(⃗a) = 1 | ishp(⃗b) = 0 | range_hp(1;5;1) = [ 1 2 3 4 5 ] -->
+```cpd
+a = hp([1m; 20dm; 30cm])
+ishp(a)
+b = [1; 2; 3]
+ishp(b)
+d = range_hp(1; 5; 1)
+```
+
+## One unit for the whole object
+
+All elements of an hp object share one unit. When you convert a list with different but compatible
+units, they are converted to the unit of the first element (above, `20dm` becomes 2 m). Units that
+cannot be converted into each other are an error, and so is writing an element whose unit does not
+match the object:
+
+```text
+x = hp([1m; 20s; 30kg])
+Inconsistent units: "m , kg".
+```
+
+<!-- expect: a = [ 0.5 2 ] m -->
+```cpd
+a = hp([1m; 2m])
+a.1 = 50cm
+a
+```
+
+Writing `a.2 = 3s` or a plain `a.2 = 3` into that vector gives `Inconsistent units`. A new
+`vector_hp(2)` has no unit, so it takes unitless numbers only; to get a vector in metres, convert a
+list that already carries the unit.
+
+## Typing and mixing
+
+An expression made only of hp values gives an hp result. As soon as one operand is an ordinary vector
+or matrix, the result is ordinary. A function that reduces to a number, such as `sum`, returns a
+plain number.
+
+<!-- expect: ishp(⃗a+⃗a) = 1 | ishp(⃗a+[1;1;1]) = 0 | ishp(⃗a+hp([1;1;1])) = 1 -->
+```cpd
+a = hp([1; 2; 3])
+ishp(a + a)
+ishp(a + [1; 1; 1])
+ishp(a + hp([1; 1; 1]))
+```
+
+Mixing is allowed, so you can feed an hp matrix to a function that takes ordinary ones. The reverse is
+not true: some functions insist on hp arguments.
+
+## Functions that need hp
+
+| Function | Needs |
+| --- | --- |
+| `slsolve(A; b)` | A hp and symmetric-typed, b an hp vector |
+| `smsolve(A; B)` | A hp and symmetric-typed, B hp |
+| `fft(M)`, `ift(M)` | an hp matrix |
+
+An ordinary argument is refused:
+
+```text
+slsolve([2; -1|-1; 2]; [1; 0])
+Argument must be hp matrix.
+```
+
+A matrix that is hp but not symmetric-typed gives `Matrix must be symmetric.` even if its numbers are
+symmetric, because the type is what counts. Copy the numbers into a `symmetric_hp` matrix:
+
+<!-- expect: slsolve(S;hp([1;0])) = [ 0.667 0.333 ] -->
+```cpd
+S = copy(hp([2; -1|-1; 2]); symmetric_hp(2); 1; 1)
+slsolve(S; hp([1; 0]))
+```
+
+`slsolve` is an iterative (conjugate gradient) solver, so its answer is accurate to the tolerance in
+the `Tol` setting. It suits large banded or sparse systems; for small ones `lsolve` is simpler.
+`ift` undoes `fft`:
+
+<!-- expect: F = fft(H) = 10 -2 -2 -2 | ift(F) = 1 2 3 4 -->
+```cpd
+H = hp([1; 2; 3; 4|0])
+F = fft(H)
+ift(F)
+```
+
+## Special matrix types
+
+`diagonal`, `symmetric`, `column`, `utriang` and `ltriang` (and the `_hp` forms) create matrices with
+a fixed structure. They keep that structure when you write into them, which gives these rules.
+
+**Writing outside the structure is an error.** A diagonal matrix has no element at (1; 2), a column
+matrix has only column 1, an upper triangular one has nothing below the diagonal and a lower
+triangular one nothing above it. Even writing 0 there is refused:
+
+```text
+D = diagonal(3; 5)
+D.(1; 2) = 7
+Index out of range: 1, 2.
+```
+
+Writing inside the structure works as usual:
+
+<!-- expect: D = 5 0 0 0 7 0 0 0 5 | U = 0 0 1 0 0 0 0 0 0 -->
+```cpd
+D = diagonal(3; 5)
+D.(2; 2) = 7
+D
+U = utriang(3)
+U.(1; 3) = 1
+U
+```
+
+**A symmetric matrix mirrors writes.** Writing to one triangle sets the other as well, so you never
+have to keep the two halves in step:
+
+<!-- expect: S = 0 0 4 0 0 0 4 0 0 -->
+```cpd
+S = symmetric(3)
+S.(3; 1) = 4
+S
+```
+
+**Filling keeps the type.** `mfill`, `fill_row` and `fill_col` respect the structure, so
+`mfill(ltriang(3); 2)` fills only the lower triangle:
+
+<!-- expect: mfill(ltriang(3);2) = 2 0 0 2 2 0 2 2 2 -->
+```cpd
+L = mfill(ltriang(3); 2)
+```
+
+**`mresize` changes the matrix in place.** `B = mresize(A; 3; 3)` resizes `A` itself and returns it,
+so after the call both names show the new size. It keeps a special type when the new size still fits
+it (a diagonal, symmetric or triangular matrix stays square):
+
+<!-- expect: n_rows(A) = 3 | n_rows(B) = 3 -->
+```cpd
+A = matrix(2; 2)
+B = mresize(A; 3; 3)
+n_rows(A)
+n_rows(B)
+```
+
+The same in-place behaviour holds for `copy`: it writes into its second argument and returns it.
+`row` and `col` of a special matrix return a full row or column, zeros included.
+
+## Eigenvalues of a symmetric matrix
+
+`eigenvals(M; n)`, `eigenvecs(M; n)` and `eigen(M; n)` take an optional count `n`. On this engine
+**a positive n returns the n smallest eigenvalues** (in ascending order) and **a negative n returns
+the n largest** (largest first). Without `n`, or with `n = 0`, you get all of them, ascending. A plain
+matrix that equals its transpose is accepted as it is (see [Deviations](appendix/deviations.md)); the
+solvers above are stricter and need the symmetric type. The example copies into `symmetric(3)` only to
+show the typed form.
+
+<!-- expect: eigenvals(A) = [ 0.586 2 3.41 ] | eigenvals(A;2) = [ 0.586 2 ] | eigenvals(A;-2) = [ 3.41 2 ] -->
+```cpd
+A = copy([2; -1; 0|-1; 2; -1|0; -1; 2]; symmetric(3); 1; 1)
+eigenvals(A)
+eigenvals(A; 2)
+eigenvals(A; -2)
+```
+
+CalcpadCE's written documentation states the opposite sign convention (positive for the largest), but
+its program behaves as shown above, and so does this one. Check a small case before relying on it. The
+same holds for hp matrices.
+
+Very large eigenproblems (hundreds of rows) use a different algorithm that returns only a few
+eigenvalues; check such results against a smaller model or a full `eigenvals(A)` before you trust them.
+
+---
+
 Chapter: Function and command reference
 URL: https://civilkit.io/calcs/guide/reference/functions
 
@@ -3269,12 +4672,15 @@ Where a typed alternative exists it is given; the editor converts it when a file
 | `take(a; b)` | Returns the n-th element from a list of scalars |
 | `take(a; b)` | Returns the n-th element from a vector |
 | `take(a; b)` | Returns the n-th element from a matrix |
+| `take(x; y; M)` | Returns the element of matrix M at row x and column y (a non-integer index is rounded) |
 | `line(a; b)` | Linear interpolation with scalar data pairs |
 | `line(a; b; c)` | Linear interpolation with x and y vectors |
 | `line(a; b)` | Linear interpolation over a linearized matrix |
+| `line(x; y; M)` | Bilinear interpolation in matrix M at row x and column y |
 | `spline(a; b)` | Hermite spline interpolation with scalar data pairs |
 | `spline(a; b; c)` | Hermite spline interpolation with x and y vectors |
 | `spline(a; b)` | Hermite spline interpolation over a linearized matrix |
+| `spline(x; y; M)` | Hermite spline interpolation in matrix M at row x and column y |
 
 ### Conditional and Logical
 
@@ -3658,6 +5064,8 @@ Directives start with `#`. The block forms (`#if` ... `#end if`) are listed once
 
 Written as an assignment on a line of their own. In a sheet, use a `>>` line.
 
+A setting value is an ordinary number: write `Precision = 0.000001`, not `1e-6` (the `1e-6` form in the rows below is shorthand and is refused on a line).
+
 | Form | Meaning |
 | --- | --- |
 | `PlotHeight = 400` | Height of plot area in pixels |
@@ -3669,8 +5077,8 @@ Written as an assignment on a line of their own. In a sheet, use a `>>` line.
 | `PlotShadows = 1` | Draw surface plots with shadows |
 | `PlotSmooth = 1` | Smooth gradient (1) or isobands (0) for surface plots |
 | `PlotLightDir = 0` | Direction to light source (0-7) clockwise |
-| `Precision = 1e-12` | Relative precision for numerical methods (10^-2 to 10^-16) |
-| `Tol = 1e-8` | Target tolerance for iterative PCG solver |
+| `Precision = 1e-14` | Relative precision for numerical methods (1e-15 to 1e-2) |
+| `Tol = 1e-6` | Target tolerance for iterative PCG solver |
 
 ## Number format strings
 
@@ -3917,7 +5325,8 @@ quantity lines that follow.
 
 Nothing is downloaded for a sheet without Python. The first time a sheet with a Python block is
 calculated, the page asks "This worksheet runs Python code" (**Run Python** or **Not now**). The
-answer is remembered for that tab. About 0.6 MB is fetched the first time and cached afterwards.
+answer is remembered for that tab. Tick **Do not ask again on this device** with Run Python to stop the question
+for every worksheet on this device (the choice is kept in the browser, so clearing the site's data asks again). About 0.6 MB is fetched the first time and cached afterwards.
 
 ## The block
 
@@ -6987,6 +8396,7 @@ page is a summary for users.
 | Nested blocks | A loop nested in an expression block cannot update the enclosing block's variable. | It can. |
 | Units in arrays | A vector or matrix writes the unit on every element. | It writes the unit once after the bracket (`[16; 12] ft`). `#settings {"unitPerElement": true}` restores the old display. |
 | Eigenvalues | `eigenvals`, `eigenvecs` and `eigen` take only a matrix of the symmetric type. | They take any square matrix; a symmetric literal no longer needs `copy(A, symmetric(n), 1, 1)`. `ceigenvals` and `ceigenvecs` return complex eigenvalues and eigenvectors. |
+| Generalized eigenvalues | The second argument is a count; a matrix there is an error. | `eigenvals(K; M)` solves K x = λ M x for a stiffness and a mass matrix. |
 | Markdown tables in Word | A table without the `bordered` class has no rules. | A Markdown pipe table is ruled. |
 | Word export | SVG pictures are embedded alone. Numbered lists lose their numbers. | An SVG is also written as a PNG for readers that lack SVG. Ordered lists are numbered. Unknown elements keep their content. |
 | Print header and footer | The server prints title, date and page numbers. | The browser prints; its own header and footer apply. |

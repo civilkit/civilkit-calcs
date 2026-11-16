@@ -21,8 +21,15 @@
 - [The Calcpad language](calcpad/index.md)
   - [Directives and commands](calcpad/directives.md)
   - [Input forms with #UI](calcpad/ui-inputs.md)
+  - [Language rules](calcpad/language-rules.md)
+  - [Keyword arguments](calcpad/keyword-arguments.md)
+  - [Numerical methods](calcpad/numerical-methods.md)
+  - [Metadata comments](calcpad/metadata-comments.md)
+  - [Linter messages](calcpad/linter-codes.md)
+  - [HTML and styling](calcpad/html-and-classes.md)
 - [Units](units.md)
 - [Vectors and matrices](vectors-matrices.md)
+  - [High-performance matrices](high-performance-matrices.md)
 - [Function and command reference](reference/functions.md)
 
 # Plots and Python

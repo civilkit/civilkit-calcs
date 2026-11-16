@@ -198,7 +198,7 @@ ratio = M_star/M_cap
 #end if
 ```
 
-In a worksheet, **Save values** writes the entered values into a comment on the first line, and the
+In a worksheet, **Save values** writes the entered values into a comment on the first line (in a sheet, directly under the `<!--sheet-->` marker), and the
 browser opens the form only when you press **Input**. The Excel export has an **Inputs** sheet
 listing the variables set by input fields.
 
