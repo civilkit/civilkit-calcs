@@ -9,10 +9,13 @@ The app changes are listed under their YY.M.N version below. The three Rust libr
 under "Crates" at the end, on plain 0.x semver, and are tagged `<crate-name>-v<version>`
 (for example `civilkit-calcs-engine-v0.1.0`).
 
-## [Unreleased]
+## [26.11.3] - 2026-11-16
 
 ### Added
 - **Cookbook samples** - A new Cookbook group in Samples holds seven worked sheets that follow the cookbook problems of the symplex library, rewritten for Calcs: a PID controller (the closed-loop polynomial, a Routh-Hurwitz check, the poles, the step response and a panel with the gains as sliders), a digital filter by the bilinear transform, Lagrangian mechanics with a double pendulum that you can play, a three-joint robot arm with its Jacobian, inverse kinematics and workspace, gradient descent on the Rosenbrock function with a line fit, RSA with exact big integers, and a polynomial inequality certificate found by an exact linear program. Each sheet derives its formulas, checks them numerically, and prints PASS or FAIL lines.
+
+### Changed
+- **atan2 in the function reference** - The reference now says that `atan2(x; y)` takes the x value first, the reverse of the order used in C and Python.
 
 ## [26.11.2] - 2026-11-16
 
