@@ -8,8 +8,8 @@
 //   <!-- sample: Template simply supported beam.sheet -->   the block must equal that file of the sample folder
 //   <!-- expect: M_max = 56.26 | Bending: OK -->            each fragment must be in the result text (spaces ignored)
 // --show prints the text of each result (used to copy real output into the book).
-// Environment: SHEET_WASM_DIR (default ../web/calcpad-web/public/wasm), CALCPAD_CLI (default ../target/debug/Cli
-// or ../target/release/Cli, whichever exists).
+// Environment: SHEET_WASM_DIR (default ../web/calcpad-web/public/wasm), CALCPAD_CLI (default ../target/release/Cli
+// or ../target/debug/Cli, whichever exists; release first, because a stale debug build gives wrong answers).
 import { readFileSync, writeFileSync, readdirSync, statSync, mkdtempSync, existsSync } from 'node:fs';
 import { execFileSync } from 'node:child_process';
 import { tmpdir } from 'node:os';
@@ -22,7 +22,7 @@ const show = args.includes('--show');
 const files = args.filter((a) => !a.startsWith('--')).map((f) => resolve(process.env.ORIG_PWD ?? process.cwd(), f));
 
 const wasmDir = resolve(process.env.SHEET_WASM_DIR ?? join(here, '..', 'web', 'calcpad-web', 'public', 'wasm'));
-const cli = process.env.CALCPAD_CLI ?? ['debug', 'release'].map((p) => join(here, '..', 'target', p, 'Cli')).find(existsSync);
+const cli = process.env.CALCPAD_CLI ?? ['release', 'debug'].map((p) => join(here, '..', 'target', p, 'Cli')).find(existsSync);
 if (!existsSync(join(wasmDir, 'calcpad_sheet_wasm_bg.wasm'))) {
     console.error(`No sheet module in ${wasmDir}. Run tools/build_wasm.sh sheet, or set SHEET_WASM_DIR.`);
     process.exit(2);

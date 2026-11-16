@@ -90,7 +90,7 @@ Resources > Settings). It has five tabs:
 
 The search box above the tabs looks through all of them and lists each match under its tab's name; clear it to
 get the tabs back. Settings opens on the tab you last used, until the browser tab is closed. Calculation settings
-opens it on Calculation, and Document > Header and footer on Export. On the tab strip, the arrow keys, Home and End
+opens it on Calculation, and Document > Page setup on Export. On the tab strip, the arrow keys, Home and End
 move between the tabs.
 
 ## On a phone

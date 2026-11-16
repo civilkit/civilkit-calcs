@@ -570,7 +570,7 @@ export const RIBBON: RibbonTab[] = [
                 action('d-markdown', 'Text to Markdown', 'markdown', 'Tidy, then write simple paragraphs as Markdown (#md on blocks)', 'markdownText'),
             ] },
             { name: 'Page', buttons: [
-                action('d-pdfsettings', 'Header and footer', 'headfoot', 'Page numbers, date and title for PDF export (the Settings dialog)', 'settings:export'),
+                action('d-pdfsettings', 'Page setup', 'headfoot', 'Paper size, orientation and margins for PDF export (the Settings dialog)', 'settings:export'),
                 big('d-pagebreak', 'Page break', 'page', PAGE_BREAK_TITLE, { text: PAGE_BREAK, line: true, sheet: PAGE_BREAK_SHEET }),
             ] },
             { name: 'Report', buttons: [

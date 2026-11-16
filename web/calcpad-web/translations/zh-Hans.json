@@ -156,8 +156,6 @@
   "ribbon.btn.d-pagebreak.title": "打印和导出 Word 文件时在此处另起一页",
   "ribbon.btn.d-pdf.label": "打印 PDF",
   "ribbon.btn.d-pdf.title": "将报告打印为 PDF",
-  "ribbon.btn.d-pdfsettings.label": "页眉和页脚",
-  "ribbon.btn.d-pdfsettings.title": "PDF 导出的页码、日期和标题（“设置”对话框）",
   "ribbon.btn.d-prettify.label": "美化",
   "ribbon.btn.d-prettify.title": "统一缩进文档并删除行尾空白（“美化”对话框）",
   "ribbon.btn.d-report.label": "报告",

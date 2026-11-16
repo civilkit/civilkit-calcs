@@ -156,8 +156,6 @@
   "ribbon.btn.d-pagebreak.title": "Commencer une nouvelle page ici à l'impression et dans le fichier Word",
   "ribbon.btn.d-pdf.label": "Imprimer en PDF",
   "ribbon.btn.d-pdf.title": "Imprimer le rapport en PDF",
-  "ribbon.btn.d-pdfsettings.label": "En-tête et pied de page",
-  "ribbon.btn.d-pdfsettings.title": "Numéros de page, date et titre pour l'export PDF (la boîte Paramètres)",
   "ribbon.btn.d-prettify.label": "Mettre en forme",
   "ribbon.btn.d-prettify.title": "Indenter le document de façon cohérente et supprimer les espaces en fin de ligne (la boîte Mettre en forme)",
   "ribbon.btn.d-report.label": "Rapport",

@@ -156,8 +156,6 @@
   "ribbon.btn.d-pagebreak.title": "Hier beim Drucken und in der Word-Datei eine neue Seite beginnen",
   "ribbon.btn.d-pdf.label": "PDF drucken",
   "ribbon.btn.d-pdf.title": "Den Bericht als PDF drucken",
-  "ribbon.btn.d-pdfsettings.label": "Kopf- und Fußzeile",
-  "ribbon.btn.d-pdfsettings.title": "Seitenzahlen, Datum und Titel für den PDF-Export (der Einstellungsdialog)",
   "ribbon.btn.d-prettify.label": "Verschönern",
   "ribbon.btn.d-prettify.title": "Das Dokument einheitlich einrücken und Leerzeichen am Zeilenende entfernen (der Dialog Verschönern)",
   "ribbon.btn.d-report.label": "Bericht",

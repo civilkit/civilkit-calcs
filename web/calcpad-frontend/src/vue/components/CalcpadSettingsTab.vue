@@ -1191,7 +1191,10 @@ const updateSettings = () => {
 
 // These are the host-level defaults. A document can override any of them for its
 // own export via the `pdf` key of a metadata comment (see the Properties tab).
-const pdfKeys = PDF_SETTING_KEYS
+// The browser build prints through the browser's own print dialog, which draws no header or footer from these, so
+// the rows would change nothing: they are not shown (the keys stay valid in a document's metadata comment).
+const PDF_NO_EFFECT = new Set(['showPageNumbers', 'showDate', 'documentTitle', 'dateTimeFormat', 'headerFooterLines', 'lineColor'])
+const pdfKeys = PDF_SETTING_KEYS.filter(k => !PDF_NO_EFFECT.has(k.key))
 
 const pdfErrors = computed<Record<string, string | null>>(() => {
   const out: Record<string, string | null> = {}

@@ -34,6 +34,26 @@ await p2.close();
 page = await open();
 ok(await page.locator('#cprs-python-yes').waitFor({ timeout: 30000 }).then(() => true, () => false), 'after the reset it asks again');
 await page.locator('#cprs-python-no').click();
+// Settings > Python: the button brings the question back
+await page.evaluate(() => localStorage.setItem('cprs.python.alwaysRun', '1'));
+const sp = await ctx.newPage();
+await sp.goto(url);
+await sp.waitForFunction(() => window.calcpadActiveEditor != null, null, { timeout: 90000 });
+await sp.evaluate(() => localStorage.setItem('cprs.python.alwaysRun', '1'));
+await sp.locator('[data-ribbon-btn=q-settings]').click();
+await sp.locator('.tab-content.as-dialog [role=tablist]').waitFor({ timeout: 15000 });
+for (const tab of await sp.locator('.tab-content.as-dialog [role=tab]').all()) {
+    await tab.click();
+    if (await sp.locator('.cprs-python-ask').isVisible()) break;
+}
+const btn = sp.locator('.cprs-python-ask');
+if (await btn.count()) {
+    await sp.locator('.cprs-python .section-header').click();
+    ok(await btn.isEnabled(), 'Settings has an Ask again button while Do not ask again is on');
+    await btn.click();
+    ok((await sp.evaluate(() => localStorage.getItem('cprs.python.alwaysRun'))) === null, 'the button clears the stored choice');
+    ok(await btn.isDisabled(), 'the button is disabled once the question is back');
+} else ok(false, 'Settings has a Python section');
 await browser.close();
 console.log(fails ? fails + ' FAIL' : 'python consent check passed');
 process.exit(fails ? 1 : 0);

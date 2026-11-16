@@ -156,8 +156,6 @@
   "ribbon.btn.d-pagebreak.title": "Empezar una página nueva aquí al imprimir y en el archivo de Word",
   "ribbon.btn.d-pdf.label": "Imprimir PDF",
   "ribbon.btn.d-pdf.title": "Imprimir el informe como PDF",
-  "ribbon.btn.d-pdfsettings.label": "Cabecera y pie",
-  "ribbon.btn.d-pdfsettings.title": "Números de página, fecha y título para la exportación a PDF (el cuadro Configuración)",
   "ribbon.btn.d-prettify.label": "Embellecer",
   "ribbon.btn.d-prettify.title": "Sangrar el documento de forma uniforme y quitar los espacios finales (el cuadro Embellecer)",
   "ribbon.btn.d-report.label": "Informe",

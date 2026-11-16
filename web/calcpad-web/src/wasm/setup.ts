@@ -5,6 +5,7 @@ import { FileLibrary } from './library';
 import type { WasmTransport } from './transport';
 import { type TabsLike, WebFiles } from './web-files';
 import LibrariesSettings from './LibrariesSettings.vue';
+import PythonSettings from './PythonSettings.vue';
 import NumberFormatSettings from './NumberFormatSettings.vue';
 import LibrariesInsert from './LibrariesInsert.vue';
 import { ref } from 'vue';
@@ -73,7 +74,7 @@ export function webExtensions() {
     }, 400);
     return {
         settingsFirstSections: [LanguageSettings, NumberFormatSettings],
-        settingsSections: [LibrariesSettings],
+        settingsSections: [PythonSettings, LibrariesSettings],
         insertSections: [LibrariesInsert],
         sheetMode,
         insertIsRaw: (text: string) => sheetInsert(text, looksLikeLine(text)).raw,

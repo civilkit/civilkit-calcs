@@ -170,7 +170,7 @@ for (const [name, opts, phone] of [['desktop', { viewport: { width: 1300, height
         check(await selected() === 'calculation', `${tag}: Calculation settings in the ribbon opens the Calculation tab`);
         await close();
         await ribbonBtn('d-pdfsettings');
-        check(await selected() === 'export' && await shown('#pdf-showPageNumbers'), `${tag}: Header and footer in the ribbon opens the Export tab`);
+        check(await selected() === 'export' && await shown('#pdf-marginTop'), `${tag}: Page setup in the ribbon opens the Export tab`);
         await close();
         await openGear();
         check(await selected() === 'export', `${tag}: the gear opens the tab last shown (Export)`);
