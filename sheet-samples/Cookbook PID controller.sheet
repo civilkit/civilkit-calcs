@@ -1,0 +1,225 @@
+<!--sheet-->
+# PID gains for a DC motor: stability, poles and the code that runs them
+
+A PID controller drives a motor to a target speed or position, and three numbers decide whether it settles smoothly, rings, or runs away. This sheet derives the closed-loop characteristic polynomial for a DC motor, checks stability with the Routh-Hurwitz test before anyone touches the hardware, finds the closed-loop poles, plots the step response, and ends with the discrete update equation as C code you can copy. Choose Input in the results bar and move the three gain sliders: every line, the plot and the verdict follow.
+
+## Inputs
+
+The plant is normalised (time in seconds, no other units), so poles come out in 1/s.
+
+Kp: ? 5 [0.2 .. 20 step 0.1] | proportional gain
+Ki: ? 2 [0.1 .. 30 step 0.1] | integral gain
+Kd: ? 0.5 [0 .. 3 step 0.05] | derivative gain
+J:  ? 1 [0.2 .. 5 step 0.1] | motor inertia
+b:  ? 10 [1 .. 30 step 0.5] | viscous damping
+K_m: ? 20 [5 .. 60 step 1] | motor gain
+Ts: ? 5 ms [1 .. 20 step 1] | controller sample time
+t_end: ? 10 [2 .. 30 step 1] | plot length in seconds
+
+>> #rad
+>> #round 4
+
+## Plant, controller and the characteristic polynomial
+
+The motor is $G(s) = \dfrac{K}{s\,(J s + b)}$ and the controller is $C(s) = K_p + \dfrac{K_i}{s} + K_d s = \dfrac{K_d s^2 + K_p s + K_i}{s}$. With unity feedback the closed loop is $T = CG/(1+CG)$, and its poles are the roots of $1 + CG = 0$. Multiplying through by $s^2 (J s + b)$:
+
+$$ J s^3 + (b + K K_d)\, s^2 + K K_p\, s + K K_i = 0 $$
+
+Dividing by $J$ gives the monic form $s^3 + a_2 s^2 + a_1 s + a_0$ with the coefficients below. For $J = 1$, $b = 10$, $K = 20$ this is the familiar $s^3 + (10 + 20 K_d) s^2 + 20 K_p s + 20 K_i$.
+
+a2: (b + K_m * Kd) / J | s^2 coefficient
+a1: K_m * Kp / J | s coefficient
+a0: K_m * Ki / J | constant term
+n2: K_m * Kd / J | numerator of T, s^2 coefficient
+n1: K_m * Kp / J | numerator of T, s coefficient
+n0: K_m * Ki / J | numerator of T, constant term
+
+## Routh-Hurwitz stability
+
+For a cubic the first column of the Routh array is $1,\ a_2,\ (a_2 a_1 - a_0)/a_2,\ a_0$. All must be positive, which comes down to three conditions: $a_2 > 0$, $a_0 > 0$ and $a_2 a_1 > a_0$.
+
+R3: (a2 * a1 - a0) / a2 | third entry of the first column
+cond1: a2 > 0
+cond2: a0 > 0
+cond3: a2 * a1 > a0
+
+if cond1 == 1: "PASS: a2 = (b + K Kd)/J is positive." else: "FAIL: a2 is not positive."
+if cond2 == 1: "PASS: a0 = K Ki/J is positive." else: "FAIL: a0 is not positive."
+if cond3 == 1: "PASS: a2 a1 exceeds a0, so the third Routh entry is positive." else: "FAIL: a2 a1 does not exceed a0, the loop oscillates or diverges."
+if cond1 + cond2 + cond3 == 3: "VERDICT: the closed loop is stable." else: "VERDICT: the closed loop is NOT stable."
+
+## Closed-loop poles by the cubic formula
+
+Substituting $s = t - a_2/3$ removes the square term: $t^3 + p t + q = 0$ with $p = a_1 - a_2^2/3$ and $q = 2a_2^3/27 - a_2 a_1/3 + a_0$. When $(q/2)^2 + (p/3)^3 < 0$ there are three real roots and the trigonometric form gives the first one; otherwise Cardano's cube roots do. The remaining two poles come from the quadratic left after dividing out the first root.
+
+pc: a1 - a2^2 / 3
+qc: 2 * a2^3 / 27 - a2 * a1 / 3 + a0
+Dc: (qc / 2)^2 + (pc / 3)^3 | discriminant
+if Dc < 0:
+    r_root: 2 * sqrt(-pc / 3) * cos(acos(3 * qc / (2 * pc) * sqrt(-3 / pc)) / 3) - a2 / 3 | first real pole
+else:
+    r_root: cbrt(-qc / 2 + sqrt(Dc)) + cbrt(-qc / 2 - sqrt(Dc)) - a2 / 3 | first real pole
+
+The other two roots solve $s^2 + e s + f = 0$ with $e = a_2 + r$ and $f = -a_0 / r$.
+
+e_q: a2 + r_root
+f_q: -a0 / r_root
+disc_q: e_q^2 / 4 - f_q | quadratic discriminant
+sig: -e_q / 2 | real part of the pair
+rt: sqrt(max(disc_q, 0)) | half the gap between two real roots
+om: sqrt(max(-disc_q, 0)) | imaginary part of a complex pair
+
+re1: r_root
+re2: sig + rt
+re3: sig - rt
+im2: om
+im3: -om
+
+Poles in 1/s (a pole with an imaginary part comes with its mirror image):
+
+Pole_tab: augment([re1; re2; re3], [0; im2; im3]) | columns: real part, imaginary part
+
+Check by substituting back into $P(s)$. The real pole must give zero, and so must each real pair member:
+
+P_of(s): s^3 + a2 * s^2 + a1 * s + a0
+res1: abs(P_of(re1)) | residual at the first pole
+res2: abs(P_of(re2)) * (om == 0) | residual at the second pole (real case)
+res3: abs(P_of(re3)) * (om == 0) | residual at the third pole (real case)
+
+if max(res1, res2, res3) < 0.000001: "PASS: every real pole satisfies P(s) = 0 to better than 1e-6." else: "FAIL: a pole does not satisfy P(s) = 0."
+re_max: max(re1, re2, re3) | right-most pole
+if re_max < 0: "PASS: every pole has a negative real part, which agrees with the Routh result." else: "FAIL: a pole is in the right half plane or on the axis."
+if (re_max < 0) == cond1 * cond2 * cond3: "PASS: the poles and the Routh test give the same verdict." else: "FAIL: the poles and the Routh test disagree."
+
+For the base case $K_p = 5$, $K_i = 2$, $K_d = 0.5$ the poles are about $-0.4374$, $-7.7244$ and $-11.8382$.
+
+## Step response
+
+Writing $Y(s) = N(s) / (s\,P(s))$ and splitting into partial fractions gives $y(t) = 1 + A e^{rt} + (\text{two terms from the quadratic})$. The 1 is the final value $N(0)/P(0)$: the integral term forces zero steady-state error.
+
+N_of(s): n2 * s^2 + n1 * s + n0
+A_r: N_of(r_root) / (r_root * (r_root^2 + e_q * r_root + f_q)) | residue at the first pole
+B_q: -(1 + A_r)
+C_q: -(n1 - a1 - A_r * f_q) / r_root
+
+Quadratic part, by case. Only one set of coefficients is nonzero.
+
+c2: 0
+c3: 0
+kc: 0
+ks: 0
+kd1: 0
+kd2: 0
+if disc_q > 0.000000001:
+    c2: (B_q * re2 + C_q) / (re2 - re3) | real distinct pair
+    c3: (B_q * re3 + C_q) / (re3 - re2)
+else if disc_q < -0.000000001:
+    kc: B_q | complex pair
+    ks: (C_q + B_q * sig) / om
+else:
+    kd1: B_q | repeated pole
+    kd2: C_q + B_q * sig
+
+y(t): 1 + A_r * exp(re1 * t) + c2 * exp(re2 * t) + c3 * exp(re3 * t) + exp(sig * t) * (kc * cos(om * t) + ks * sin(om * t) + kd1 + kd2 * t) | closed-loop step response
+
+y0: y(0) | must be 0
+if abs(y0) < 0.000001: "PASS: the response starts at zero." else: "FAIL: y(0) is not zero."
+if re_max < 0: "PASS: the response settles to 1, so there is no steady-state error." else: "The loop is not stable, so the response does not settle."
+
+plot y(x) as "step response", 1 as "target" for x in 0..t_end
+
+## Interactive step response
+
+Drag the gains below. The panel integrates the closed-loop equations again for each move (fixed motor, J = 1, b = 10, K = 20) and prints the Routh verdict above the curve. Try $K_p = 0.5$, $K_i = 15$ to see the loop go unstable. It is separate from the sheet inputs above.
+
+```python
+import ui
+
+Jm = 1.0
+bm = 10.0
+Km = 20.0
+
+kp = ui.slider("kp", 5, 0.2, 20, step=0.1, label="Kp")
+ki = ui.slider("ki", 2, 0.1, 30, step=0.1, label="Ki")
+kd = ui.slider("kd", 0.5, 0, 3, step=0.05, label="Kd")
+
+@ui.panel(kp, ki, kd)
+def pid_step(kp, ki, kd):
+    a2 = (bm + Km * kd) / Jm
+    a1 = Km * kp / Jm
+    a0 = Km * ki / Jm
+    n2 = Km * kd / Jm
+    n1 = a1
+    n0 = a0
+    dt = 0.01
+    n = 1000
+    z0 = 0.0
+    z1 = 0.0
+    z2 = 0.0
+    ts = []
+    ys = []
+    for k in range(n + 1):
+        ts.append(k * dt)
+        ys.append(n2 * z2 + n1 * z1 + n0 * z0)
+        # controller canonical form, unit step input, classic RK4
+        def f(a, b_, c):
+            return (b_, c, 1.0 - a2 * c - a1 * b_ - a0 * a)
+        k1 = f(z0, z1, z2)
+        k2 = f(z0 + dt / 2 * k1[0], z1 + dt / 2 * k1[1], z2 + dt / 2 * k1[2])
+        k3 = f(z0 + dt / 2 * k2[0], z1 + dt / 2 * k2[1], z2 + dt / 2 * k2[2])
+        k4 = f(z0 + dt * k3[0], z1 + dt * k3[1], z2 + dt * k3[2])
+        z0 += dt / 6 * (k1[0] + 2 * k2[0] + 2 * k3[0] + k4[0])
+        z1 += dt / 6 * (k1[1] + 2 * k2[1] + 2 * k3[1] + k4[1])
+        z2 += dt / 6 * (k1[2] + 2 * k2[2] + 2 * k3[2] + k4[2])
+        if abs(z0) > 1e6:
+            break
+    ok = a2 > 0 and a0 > 0 and a2 * a1 > a0
+    peak = max(ys)
+    if ok:
+        verdict = "STABLE (Routh: a2 = %.1f, a0 = %.1f, a2*a1 - a0 = %.0f). Peak %.3f, overshoot %.1f %%." % (a2, a0, a2 * a1 - a0, peak, max(peak - 1.0, 0.0) * 100)
+    else:
+        verdict = "UNSTABLE (Routh: a2 = %.1f, a0 = %.1f, a2*a1 - a0 = %.0f). The response grows." % (a2, a0, a2 * a1 - a0)
+    ref = [1.0 for _ in ts]
+    return [verdict, ui.plot(ts, ys, ref, names=["Step response", "Target"], xlabel="Time (s)", ylabel="Output", ylim=(-0.2, 2.2))]
+```
+
+## Discrete controller for a microcontroller
+
+Sampled every $T_s$, the integral becomes a running sum and the derivative a backward difference:
+
+$$ u[k] = K_p\, e[k] + K_i T_s \sum_{j \le k} e[j] + K_d\, \frac{e[k] - e[k-1]}{T_s} $$
+
+Two constants are worth computing once, and the sample time must be fast against the fastest pole (a common rule is a factor of ten).
+
+Ki_d: Ki * Ts / (1 s) | integral gain per sample
+Kd_d: Kd * (1 s) / Ts | derivative gain per sample
+p_fast: max(abs(re1), abs(re2), abs(re3), sqrt(re2^2 + im2^2)) | fastest pole in 1/s
+Ts_max: 1 / (10 * p_fast) * 1 s | largest sample time by the rule of ten
+if Ts <= Ts_max: "PASS: Ts is within a tenth of the fastest time constant." else: "FAIL: Ts is too long for the fastest pole, shorten it."
+
+The update for the base case ($K_p = 5$, $K_i = 2$, $K_d = 0.5$, $T_s = 5$ ms, so $K_i T_s = 0.01$ and $K_d/T_s = 100$). Change the three constants if you move the sliders:
+
+```c
+/* call every 5 ms; err = setpoint - measurement */
+static float integral = 0.0f, prev_err = 0.0f;
+
+float pid_update(float err)
+{
+    integral += err;                         /* running sum of e */
+    float u = 5.0f * err
+            + 0.01f * integral               /* Ki * Ts */
+            + 100.0f * (err - prev_err);     /* Kd / Ts */
+    prev_err = err;
+    return u;
+}
+```
+
+Clamp the integral and the output for a real actuator, and note that a derivative on the error kicks when the setpoint steps. Moving it onto the measurement avoids that.
+
+## Explore
+
+- Set $K_i$ near 30 with $K_p$ near 0.5 and watch the Routh line flip to FAIL while the poles cross into the right half plane.
+- Raise $K_d$ to add damping: $a_2$ grows and the oscillatory pair becomes two real poles.
+- Change $J$, $b$ or $K$ to try another motor. The formulas above are general; only the quoted base-case numbers are not.
+
+Follows the cookbook example pid_controller.rs of the symplex library (github.com/cgorski/symplex, MIT OR Apache-2.0).

@@ -1,0 +1,291 @@
+<!--sheet-->
+# Robot arm kinematics: forward, Jacobian, inverse
+
+A planar three-joint arm is the smallest arm that shows everything a controller needs: where the tool is for given joint angles (forward kinematics), how tool speed follows joint speed (the Jacobian), where the arm loses a direction of motion (singularities), and which joint angles reach a wanted point (inverse kinematics). The formulas are derived here by hand and every one is **checked numerically in the sheet**, so you can trust them before putting them in a controller.
+
+The arm has link lengths 0.30 m, 0.25 m and 0.20 m, so its reach is 0.75 m. Angles are in radians and every joint turns about the axis out of the page.
+
+>> #rad
+
+## 1. Geometry and DH parameters
+
+Each joint follows the standard Denavit-Hartenberg convention. For a planar arm the link offset $d$ and the twist $\alpha$ are zero, so only the joint angle $\theta_i$ and the link length $a_i$ matter.
+
+| Joint | $\theta$ | $d$ | $a$ (m) | $\alpha$ |
+| --- | --- | --- | --- | --- |
+| 1 | $\theta_1$ | 0 | 0.30 | 0 |
+| 2 | $\theta_2$ | 0 | 0.25 | 0 |
+| 3 | $\theta_3$ | 0 | 0.20 | 0 |
+
+L1: 0.30 m; L2: 0.25 m; L3: 0.20 m | link lengths
+reach: L1 + L2 + L3 -> m | maximum reach, arm stretched out
+
+## 2. Forward kinematics
+
+Multiplying the three DH transforms, the tool tip is the sum of three vectors, each turned by the sum of the joint angles up to it:
+
+$$p_x = L_1\cos\theta_1 + L_2\cos(\theta_1+\theta_2) + L_3\cos(\theta_1+\theta_2+\theta_3)$$
+
+$$p_y = L_1\sin\theta_1 + L_2\sin(\theta_1+\theta_2) + L_3\sin(\theta_1+\theta_2+\theta_3)$$
+
+and the tool points at angle $\phi = \theta_1+\theta_2+\theta_3$. Base configuration used in the rest of the sheet:
+
+t1: 0.5; t2: 0.3; t3: 0.1 | joint angles, rad
+fx(a, b, c): L1 * cos(a) + L2 * cos(a + b) + L3 * cos(a + b + c) -> m
+fy(a, b, c): L1 * sin(a) + L2 * sin(a + b) + L3 * sin(a + b + c) -> m
+p_x: fx(t1, t2, t3) -> m {key}
+p_y: fy(t1, t2, t3) -> m {key}
+phi_tool: t1 + t2 + t3 | tool angle, rad
+dist: sqrt(p_x^2 + p_y^2) -> m | distance of the tip from the base
+
+if dist <= reach: "PASS: the tip is within the 0.75 m reach" else: "FAIL: the tip is outside the reach"
+
+## 3. The Jacobian
+
+Differentiating the tip position with respect to each joint angle gives the 2 by 3 matrix that maps joint speeds to tip velocity, $\dot p = J\dot\theta$. Writing $s_1=\sin\theta_1$, $s_{12}=\sin(\theta_1+\theta_2)$, $s_{123}=\sin(\theta_1+\theta_2+\theta_3)$ and likewise $c$:
+
+$$J = \begin{bmatrix} -(L_1 s_1 + L_2 s_{12} + L_3 s_{123}) & -(L_2 s_{12} + L_3 s_{123}) & -L_3 s_{123} \\ L_1 c_1 + L_2 c_{12} + L_3 c_{123} & L_2 c_{12} + L_3 c_{123} & L_3 c_{123} \end{bmatrix}$$
+
+Column $j$ is the tip velocity per unit speed of joint $j$: the arm from joint $j$ to the tip, turned a quarter turn.
+
+J11: -(L1 * sin(t1) + L2 * sin(t1 + t2) + L3 * sin(t1 + t2 + t3)) -> m
+J12: -(L2 * sin(t1 + t2) + L3 * sin(t1 + t2 + t3)) -> m
+J13: -L3 * sin(t1 + t2 + t3) -> m
+J21: L1 * cos(t1) + L2 * cos(t1 + t2) + L3 * cos(t1 + t2 + t3) -> m
+J22: L2 * cos(t1 + t2) + L3 * cos(t1 + t2 + t3) -> m
+J23: L3 * cos(t1 + t2 + t3) -> m
+Jm: [J11, J12, J13; J21, J22, J23] | analytic Jacobian, in m per rad
+
+### Check against finite differences
+
+Central differences of the forward kinematics, step $\varepsilon = 10^{-6}$ rad, give the same matrix without using any derivative formula:
+
+eps: 1e-6
+F11: (fx(t1 + eps, t2, t3) - fx(t1 - eps, t2, t3)) / (2 * eps) -> m
+F12: (fx(t1, t2 + eps, t3) - fx(t1, t2 - eps, t3)) / (2 * eps) -> m
+F13: (fx(t1, t2, t3 + eps) - fx(t1, t2, t3 - eps)) / (2 * eps) -> m
+F21: (fy(t1 + eps, t2, t3) - fy(t1 - eps, t2, t3)) / (2 * eps) -> m
+F22: (fy(t1, t2 + eps, t3) - fy(t1, t2 - eps, t3)) / (2 * eps) -> m
+F23: (fy(t1, t2, t3 + eps) - fy(t1, t2, t3 - eps)) / (2 * eps) -> m
+jerr: max(abs(J11 - F11), abs(J12 - F12), abs(J13 - F13), abs(J21 - F21), abs(J22 - F22), abs(J23 - F23)) -> m | largest entry difference
+
+if jerr < 1e-8 m: "PASS: the analytic Jacobian matches finite differences to 1e-8 m" else: "FAIL: the Jacobian does not match finite differences"
+
+## 4. Manipulability and singular configurations
+
+The manipulability $w = \sqrt{\det(JJ^T)}$ measures how freely the tip can move in every direction; it is zero when the arm has lost a direction. By the Cauchy-Binet formula $\det(JJ^T)$ is the sum of the squared 2 by 2 minors of $J$, and for this arm the three minors are
+
+$$m_{23} = L_2L_3\sin\theta_3,\quad m_{13} = L_1L_3\sin(\theta_2+\theta_3) + L_2L_3\sin\theta_3,\quad m_{12} = L_1L_2\sin\theta_2 + L_1L_3\sin(\theta_2+\theta_3)$$
+
+so $w = \sqrt{m_{23}^2 + m_{13}^2 + m_{12}^2}$, and it does not depend on $\theta_1$. It vanishes only when all three minors vanish, that is $\sin\theta_2 = \sin\theta_3 = 0$: every link lies on one line, fully stretched ($\theta_2=\theta_3=0$) or folded back on itself.
+
+a11: J11^2 + J12^2 + J13^2 -> m^2
+a12: J11 * J21 + J12 * J22 + J13 * J23 -> m^2
+a22: J21^2 + J22^2 + J23^2 -> m^2
+w_num: sqrt(a11 * a22 - a12^2) -> m^2 | sqrt of det(J J^T), from the numbers
+wm(b, c): sqrt((L2 * L3 * sin(c))^2 + (L1 * L3 * sin(b + c) + L2 * L3 * sin(c))^2 + (L1 * L2 * sin(b) + L1 * L3 * sin(b + c))^2) -> m^2
+w_closed: wm(t2, t3) -> m^2 | closed form above {key}
+
+if abs(w_num - w_closed) < 1e-12 m^2: "PASS: the closed form equals sqrt(det(J J^T))" else: "FAIL: closed form and matrix value differ"
+
+Three configurations:
+
+w_ext: wm(0, 0) -> m^2 | arm stretched out, a singularity
+w_fold: wm(pi, 0) -> m^2 | link 2 folded back over link 1, a singularity
+w_bent: wm(pi / 2, -pi / 2) -> m^2 | elbow at a right angle, wrist bent back, far from singular
+
+if w_ext < 1e-12 m^2 and w_fold < 1e-12 m^2: "PASS: w is zero at the singular configurations" else: "FAIL: w is not zero where it should be"
+if w_closed > 0.001 m^2: "PASS: the base configuration is regular" else: "FAIL: the base configuration is singular"
+
+Manipulability against the elbow angle, with $\theta_3 = 0.4$ rad:
+
+plot wm(x, 0.4) for x in -pi..pi
+
+## 5. Inverse kinematics of the two-link sub-arm
+
+For links 1 and 2 alone, a target $(x,y)$ inside the annulus $|L_1-L_2|\le r\le L_1+L_2$ gives, from the law of cosines,
+
+$$\cos\theta_2 = \frac{x^2+y^2-L_1^2-L_2^2}{2L_1L_2}, \qquad \theta_1 = \operatorname{atan2}(y,x) - \operatorname{atan2}\big(L_2\sin\theta_2,\; L_1 + L_2\cos\theta_2\big)$$
+
+The sign of $\theta_2 = \pm\arccos(\cdot)$ is the choice of elbow: a positive angle puts the elbow below the line from base to target (elbow down), a negative one above it (elbow up). The target is the tip of the sub-arm at $\theta_1 = 0.5$, $\theta_2 = 0.3$.
+
+x_t: L1 * cos(0.5) + L2 * cos(0.8) -> m
+y_t: L1 * sin(0.5) + L2 * sin(0.8) -> m
+c2: (x_t^2 + y_t^2 - L1^2 - L2^2) / (2 * L1 * L2) | cos of the elbow angle
+q2_dn: acos(c2) | elbow down
+q2_up: -acos(c2) | elbow up
+q1_dn: atan2(x_t / 1 m, y_t / 1 m) - atan2(L1 / 1 m + L2 / 1 m * cos(q2_dn), L2 / 1 m * sin(q2_dn))
+q1_up: atan2(x_t / 1 m, y_t / 1 m) - atan2(L1 / 1 m + L2 / 1 m * cos(q2_up), L2 / 1 m * sin(q2_up))
+ex_dn: L1 * cos(q1_dn) + L2 * cos(q1_dn + q2_dn) - x_t -> m
+ey_dn: L1 * sin(q1_dn) + L2 * sin(q1_dn + q2_dn) - y_t -> m
+ex_up: L1 * cos(q1_up) + L2 * cos(q1_up + q2_up) - x_t -> m
+ey_up: L1 * sin(q1_up) + L2 * sin(q1_up + q2_up) - y_t -> m
+
+if abs(ex_dn) + abs(ey_dn) + abs(ex_up) + abs(ey_up) < 1e-12 m: "PASS: both elbow solutions put the tip on the target" else: "FAIL: an elbow solution misses the target"
+if abs(q1_dn - 0.5) < 1e-9 and abs(q2_dn - 0.3) < 1e-9: "PASS: the elbow-down solution returns the angles the target was made from" else: "FAIL: elbow-down does not return 0.5 and 0.3"
+
+## 6. Three joints: target point and tool angle
+
+With three joints a target point and a tool angle $\phi$ fix the problem: three equations, three unknowns. The wrist point is the target pulled back along the tool by $L_3$, and then section 5 applies to it, so a closed form exists. A controller instead iterates with damped least squares, which also behaves near singularities. The update is
+
+$$\Delta\theta = J_a^T\left(J_aJ_a^T + \lambda^2 I\right)^{-1} e$$
+
+where $J_a$ is the Jacobian with a third row $[1, 1, 1]$ (the tool angle) and $e$ the remaining error in $(x, y, \phi)$. The block starts from $\theta = (0.3, 0.3, 0.3)$ with damping $\lambda = 0.05$ and goes to the target $(0.45, 0.30)$ m at tool angle 1.0 rad.
+
+```python
+import math
+import plotly.graph_objects as go
+
+A1, A2, A3 = 0.30, 0.25, 0.20
+TX, TY, TPHI = 0.45, 0.30, 1.0
+LAM = 0.05
+
+def fk(t):
+    a, b, c = t[0], t[0] + t[1], t[0] + t[1] + t[2]
+    return [A1 * math.cos(a) + A2 * math.cos(b) + A3 * math.cos(c),
+            A1 * math.sin(a) + A2 * math.sin(b) + A3 * math.sin(c), c]
+
+def jac(t):
+    a, b, c = t[0], t[0] + t[1], t[0] + t[1] + t[2]
+    return [[-(A1 * math.sin(a) + A2 * math.sin(b) + A3 * math.sin(c)), -(A2 * math.sin(b) + A3 * math.sin(c)), -A3 * math.sin(c)],
+            [A1 * math.cos(a) + A2 * math.cos(b) + A3 * math.cos(c), A2 * math.cos(b) + A3 * math.cos(c), A3 * math.cos(c)],
+            [1.0, 1.0, 1.0]]
+
+def solve3(M, r):
+    n = 3
+    W = [list(M[i]) + [r[i]] for i in range(n)]
+    for c in range(n):
+        p = max(range(c, n), key=lambda k: abs(W[k][c]))
+        W[c], W[p] = W[p], W[c]
+        for k in range(c + 1, n):
+            f = W[k][c] / W[c][c]
+            for j in range(c, n + 1):
+                W[k][j] -= f * W[c][j]
+    x = [0.0] * n
+    for i in range(n - 1, -1, -1):
+        x[i] = (W[i][n] - sum(W[i][j] * x[j] for j in range(i + 1, n))) / W[i][i]
+    return x
+
+th = [0.3, 0.3, 0.3]
+hist = []
+iters = 0
+for it in range(60):
+    p = fk(th)
+    e = [TX - p[0], TY - p[1], TPHI - p[2]]
+    err = math.sqrt(e[0] ** 2 + e[1] ** 2 + e[2] ** 2)
+    hist.append(err)
+    if err < 1e-10:
+        break
+    J = jac(th)
+    JJt = [[sum(J[i][k] * J[j][k] for k in range(3)) + (LAM ** 2 if i == j else 0.0) for j in range(3)] for i in range(3)]
+    y = solve3(JJt, e)
+    th = [th[j] + sum(J[i][j] * y[i] for i in range(3)) for j in range(3)]
+    iters = it + 1
+print("iterations:", iters, " final error: %.2e" % hist[-1])
+print("theta (rad):", ["%.6f" % v for v in th])
+export(d1=th[0], d2=th[1], d3=th[2], d_iters=iters, d_err=hist[-1])
+
+fig = go.Figure(go.Scatter(x=list(range(len(hist))), y=[max(h, 1e-16) for h in hist], mode="lines+markers", name="error"))
+fig.update_layout(height=300, title="Damped least squares: error against iteration", xaxis_title="iteration",
+                  yaxis_title="|e| (m, m, rad mixed)", yaxis_type="log", margin=dict(l=60, r=16, t=40, b=44))
+fig.show()
+```
+
+The solution is checked with the sheet's own forward kinematics, and against the closed form (wrist point, then section 5 with the wrist as target):
+
+x_T: 0.45 m; y_T: 0.30 m; phi_T: 1.0 | target point and tool angle
+fkx: fx(d1, d2, d3) -> m | tip of the solution
+fky: fy(d1, d2, d3) -> m
+fkphi: d1 + d2 + d3
+x_w: x_T - L3 * cos(phi_T) -> m | wrist point
+y_w: y_T - L3 * sin(phi_T) -> m
+cw: (x_w^2 + y_w^2 - L1^2 - L2^2) / (2 * L1 * L2)
+b2_dn: acos(cw)
+b2_up: -acos(cw)
+b1_dn: atan2(x_w / 1 m, y_w / 1 m) - atan2(L1 / 1 m + L2 / 1 m * cos(b2_dn), L2 / 1 m * sin(b2_dn))
+b1_up: atan2(x_w / 1 m, y_w / 1 m) - atan2(L1 / 1 m + L2 / 1 m * cos(b2_up), L2 / 1 m * sin(b2_up))
+b3_dn: phi_T - b1_dn - b2_dn
+b3_up: phi_T - b1_up - b2_up
+
+if abs(fkx - x_T) < 1e-9 m and abs(fky - y_T) < 1e-9 m and abs(fkphi - phi_T) < 1e-9: "PASS: the iteration reaches the target point and the tool angle" else: "FAIL: the iteration missed the target"
+if abs(d1 - b1_dn) + abs(d2 - b2_dn) + abs(d3 - b3_dn) < 1e-6 or abs(d1 - b1_up) + abs(d2 - b2_up) + abs(d3 - b3_up) < 1e-6: "PASS: the iteration equals one of the two closed-form solutions" else: "FAIL: the iteration found neither closed-form solution"
+
+## 7. Workspace
+
+The tip positions reached by sampling the joint angles: $\theta_1$ over a full turn and $\theta_2$, $\theta_3$ within plus or minus 2.5 rad (about 143 degrees), a typical joint limit. The colour is the manipulability, so the dark spots are where the arm is close to singular. The outer circle is the 0.75 m reach.
+
+```python
+import math
+import plotly.graph_objects as go
+
+X, Y, W = [], [], []
+rmin, rmax = 9.0, 0.0
+n1, n2 = 36, 21
+for i in range(n1):
+    a = -math.pi + 2 * math.pi * i / n1
+    for j in range(n2):
+        b = -2.5 + 5.0 * j / (n2 - 1)
+        for k in range(n2):
+            c = -2.5 + 5.0 * k / (n2 - 1)
+            x = A1 * math.cos(a) + A2 * math.cos(a + b) + A3 * math.cos(a + b + c)
+            y = A1 * math.sin(a) + A2 * math.sin(a + b) + A3 * math.sin(a + b + c)
+            r = math.hypot(x, y)
+            rmin = min(rmin, r); rmax = max(rmax, r)
+            s2, s3, s23 = math.sin(b), math.sin(c), math.sin(b + c)
+            m23 = A2 * A3 * s3
+            m13 = A1 * A3 * s23 + A2 * A3 * s3
+            m12 = A1 * A2 * s2 + A1 * A3 * s23
+            X.append(round(x, 4)); Y.append(round(y, 4)); W.append(round(math.sqrt(m23**2 + m13**2 + m12**2), 5))
+print("samples:", len(X), " largest tip distance %.4f m, smallest %.4f m" % (rmax, rmin))
+export(ws_rmax=rmax, ws_n=len(X))
+circ = [2 * math.pi * i / 120 for i in range(121)]
+fig = go.Figure()
+fig.add_trace(go.Scatter(x=X, y=Y, mode="markers", name="tip", marker=dict(size=3, color=W, colorscale="Viridis", showscale=True, colorbar=dict(title="w (m^2)"))))
+fig.add_trace(go.Scatter(x=[0.75 * math.cos(t) for t in circ], y=[0.75 * math.sin(t) for t in circ], mode="lines", name="reach 0.75 m", line=dict(dash="dot", color="#888")))
+fig.update_layout(height=540, margin=dict(l=56, r=16, t=16, b=44), legend=dict(orientation="h", y=-0.2), xaxis=dict(title="x (m)", scaleanchor="y", scaleratio=1), yaxis=dict(title="y (m)"))
+fig.show()
+```
+
+if ws_rmax <= 0.75 + 1e-9: "PASS: no sampled tip is farther than the 0.75 m reach" else: "FAIL: a sampled tip lies outside the reach"
+
+## 8. Move the joints
+
+Drag the three sliders. The picture shows the arm over its workspace circle, and the text under it gives the tip position, the tool angle and the manipulability. Try $\theta_2 = \theta_3 = 0$: the manipulability falls to zero and the arm is stretched out.
+
+```python
+import ui
+
+q1 = ui.slider("q1", 0.5, -3.14, 3.14, step=0.01, unit="rad", label="Joint 1")
+q2 = ui.slider("q2", 0.3, -2.6, 2.6, step=0.01, unit="rad", label="Joint 2")
+q3 = ui.slider("q3", 0.1, -2.6, 2.6, step=0.01, unit="rad", label="Joint 3")
+
+@ui.panel(q1, q2, q3)
+def arm(q1, q2, q3):
+    a = q1; b = a + q2; c = b + q3
+    pts_x = [0, A1 * math.cos(a), A1 * math.cos(a) + A2 * math.cos(b), A1 * math.cos(a) + A2 * math.cos(b) + A3 * math.cos(c)]
+    pts_y = [0, A1 * math.sin(a), A1 * math.sin(a) + A2 * math.sin(b), A1 * math.sin(a) + A2 * math.sin(b) + A3 * math.sin(c)]
+    t2, t3 = q2, q3
+    m23 = A2 * A3 * math.sin(t3)
+    m13 = A1 * A3 * math.sin(t2 + t3) + A2 * A3 * math.sin(t3)
+    m12 = A1 * A2 * math.sin(t2) + A1 * A3 * math.sin(t2 + t3)
+    w = math.sqrt(m23 ** 2 + m13 ** 2 + m12 ** 2)
+    ring = [2 * math.pi * i / 90 for i in range(91)]
+    fig = go.Figure()
+    fig.add_trace(go.Scatter(x=[0.75 * math.cos(t) for t in ring], y=[0.75 * math.sin(t) for t in ring], mode="lines", line=dict(dash="dot", color="#888")))
+    fig.add_trace(go.Scatter(x=pts_x, y=pts_y, mode="lines+markers", line=dict(width=5, color="#1f77b4"), marker=dict(size=[10, 12, 12, 14])))
+    fig.update_layout(height=420, showlegend=False, margin=dict(l=48, r=16, t=16, b=44),
+                      xaxis=dict(range=[-0.85, 0.85], title="x (m)", scaleanchor="y", scaleratio=1), yaxis=dict(range=[-0.85, 0.85], title="y (m)"))
+    msg = "Tip (%.4f, %.4f) m, tool angle %.3f rad, manipulability w = %.5f m^2" % (pts_x[3], pts_y[3], q1 + q2 + q3, w)
+    if w < 1e-3:
+        msg += "  (near a singularity)"
+    return [fig, msg]
+```
+
+## What to change
+
+- Link lengths: edit `L1`, `L2`, `L3` in section 1 and `A1`, `A2`, `A3` in section 6. Every check follows.
+- Base configuration: edit `t1`, `t2`, `t3` in section 2. Set `t2` and `t3` to 0 and the singularity check on the base configuration fails, as it should.
+- Inverse kinematics: change the target `TX`, `TY`, `TPHI` in the block of section 6 and `x_T`, `y_T`, `phi_T` below it together. Start the iteration from `th = [0.3, -0.3, 0.3]` and it lands on the other elbow.
+- Joint limits and sampling density of the workspace: the `2.5` and `n1`, `n2` in section 7.
+
+Follows the cookbook example robotics_codegen.rs of the symplex library (github.com/cgorski/symplex, MIT OR Apache-2.0).

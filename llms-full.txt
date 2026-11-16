@@ -3165,7 +3165,7 @@ Where a typed alternative exists it is given; the editor converts it when a file
 | `asin(x)` | Inverse sine (arc sine) |
 | `acos(x)` | Inverse cosine (arc cosine) |
 | `atan(x)` | Inverse tangent (arc tangent) |
-| `atan2(a; b)` | Two-argument arc tangent |
+| `atan2(x; y)` | Angle of the point (x, y), that is `atan(y/x)` in the right quadrant. The x value comes first, the reverse of C, Python and MATLAB `atan2(y, x)` |
 | `acsc(x)` | Inverse cosecant |
 | `asec(x)` | Inverse secant |
 | `acot(x)` | Inverse cotangent |
@@ -6807,6 +6807,8 @@ Written in the sheet format. They are listed first.
 | Plots and diagrams (16) | A plot gallery of implicit curves, functions and polylines on a grid, an animated beam with a moving load (Play, Pause, a slider), and fourteen sheets with a diagram drawn from text next to the numbers: a design check as a flow diagram, a load path, the design states of a beam, a review and sign-off sequence, a construction programme (Gantt chart), a dead load share (pie chart), a cost plan (treemap), a site risk matrix (quadrant chart), a bending moment chart (XY chart), the energy flow through a pump (Sankey), a footbridge brief (mind map), requirements traceability, concrete strength gain (timeline) and section shapes (class diagram). |
 | 3D plots (5) | A plate deflection surface, a column interaction surface, a space frame in 3D lines, a mode-shape explorer with a dropdown, a 3D bar chart of footing reactions. |
 | Physics (1) | A tennis ball in flight: drag, spin and the sideways force from spin, integrated in a Python block. |
+| Panels (7) | Interactive panels, the [Interactive panels](python-panels.md) chapter in working form: a beam deflection explorer, a pump operating point and a column buckling player, free vibration written with `ui.manipulate`, beam diagrams in tabs with number boxes, a button and Markdown, two panels that share one slider, and a slider tied to a sheet input. |
+| Cookbook (7) | Worked problems from engineering and mathematics, each derived, checked and plotted: a PID controller with its stability check, a digital filter from the bilinear transform, Lagrangian mechanics with a double pendulum, a three-joint robot arm, gradient descent, RSA with exact big integers, and a polynomial inequality certificate found by an exact linear program. Each prints its own PASS or FAIL checks. |
 
 ## Calcpad worksheets
 

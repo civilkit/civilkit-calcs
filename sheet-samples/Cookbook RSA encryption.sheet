@@ -1,0 +1,236 @@
+<!--sheet-->
+# RSA from first principles: modular arithmetic at work
+
+RSA lets two people exchange secrets without sharing a secret first: anyone may lock a message with the public key, only the key holder can unlock it. Everything in it is whole-number arithmetic with remainders, which is why it is a good way to see modular arithmetic do real work. This sheet builds a complete toy key pair, encrypts, decrypts, signs and verifies, and checks every step.
+
+**This is for learning, not for security.** The keys here are 61 bits long (real keys are 2048 bits or more), there is no padding and the message is a bare number. A modulus this small is factored in a blink, as section 6 shows. Never use any of this code to protect anything.
+
+The idea in one paragraph. Work with remainders modulo $n = p\,q$, where $p$ and $q$ are secret primes. Euler's theorem says $m^{\varphi(n)} \equiv 1 \pmod n$ for $m$ coprime to $n$, with $\varphi(n) = (p-1)(q-1)$. Choose $e$ and $d$ with $e\,d \equiv 1 \pmod{\varphi(n)}$. Then $(m^e)^d = m^{1 + k\varphi(n)} \equiv m$, so raising to $d$ undoes raising to $e$. Knowing $n$ and $e$ does not reveal $d$ unless you can factor $n$.
+
+The Python blocks below share one session, so each section uses the helpers and keys of the ones before it. Every check prints PASS or FAIL.
+
+## 1. Prime numbers: Miller-Rabin
+
+Testing divisibility up to $\sqrt{n}$ is hopeless for large $n$. The Miller-Rabin test writes $n - 1 = 2^s d$ with $d$ odd and looks at $a^d \bmod n$ for a base $a$: a prime must give 1 or reach $-1$ in the repeated squarings. A composite number usually fails for most bases. For $n < 3.3 \times 10^{24}$ the first twelve primes as bases give a *deterministic* answer, with no randomness and no error.
+
+```python
+SMALL = [2, 3, 5, 7, 11, 13, 17, 19, 23, 29, 31, 37]
+fails = 0
+
+def check(label, ok):
+    global fails
+    if not ok:
+        fails += 1
+    print(("PASS: " if ok else "FAIL: ") + label)
+
+def modpow(base, exp, mod):
+    # square and multiply: one squaring per bit of the exponent
+    result = 1
+    base %= mod
+    while exp > 0:
+        if exp & 1:
+            result = result * base % mod
+        base = base * base % mod
+        exp >>= 1
+    return result
+
+def is_prime(n):
+    if n < 2:
+        return False
+    for a in SMALL:
+        if n % a == 0:
+            return n == a
+    d, s = n - 1, 0
+    while d % 2 == 0:
+        d //= 2
+        s += 1
+    for a in SMALL:
+        x = modpow(a, d, n)
+        if x == 1 or x == n - 1:
+            continue
+        for _ in range(s - 1):
+            x = x * x % n
+            if x == n - 1:
+                break
+        else:
+            return False
+    return True
+
+def next_prime(k):
+    k += 1
+    while not is_prime(k):
+        k += 1
+    return k
+
+p = next_prime(1000000007)
+q = next_prime(2000000011)
+print("p =", p)
+print("q =", q)
+check("p is prime", is_prime(p))
+check("q is prime", is_prime(q))
+check("p and q are different", p != q)
+check("modpow agrees with the built-in 3-argument pow", all(modpow(a, b, 1000003) == pow(a, b, 1000003) for a, b in [(2, 10), (7, 1000), (123456, 654321)]))
+check("3215031751 = 151 * 751 * 28351 fools bases 2, 3, 5 and 7 but is rejected here", not is_prime(3215031751))
+```
+
+The 3-argument `pow(a, b, n)` exists in this Python and is used above only as a cross-check; `modpow` is the same square-and-multiply loop written out, so you can see why even a 61-bit exponent needs only a few dozen multiplications.
+
+## 2. The key pair
+
+The modulus is $n = p\,q$ and the totient $\varphi(n) = (p-1)(q-1)$. The public exponent is the usual $e = 65537$, which needs to be coprime to $\varphi$. The private exponent is the inverse of $e$ modulo $\varphi$, found with the extended Euclidean algorithm: it returns integers $x, y$ with $e\,x + \varphi\,y = \gcd(e, \varphi)$, and when the gcd is 1, $x$ is the inverse.
+
+```python
+def egcd(a, b):
+    # returns (g, x, y) with a*x + b*y = g = gcd(a, b)
+    x0, y0, x1, y1 = 1, 0, 0, 1
+    while b:
+        quo = a // b
+        a, b = b, a - quo * b
+        x0, x1 = x1, x0 - quo * x1
+        y0, y1 = y1, y0 - quo * y1
+    return a, x0, y0
+
+def inverse(a, m):
+    g, x, _ = egcd(a, m)
+    if g != 1:
+        raise ValueError("no inverse: gcd is not 1")
+    return x % m
+
+n = p * q
+phi = (p - 1) * (q - 1)
+e = 65537
+g, _, _ = egcd(e, phi)
+d = inverse(e, phi)
+print("n   = p*q       =", n)
+print("phi = (p-1)(q-1) =", phi)
+print("e               =", e)
+print("d = e^-1 mod phi =", d)
+print("n has", len(str(n)), "digits and", len(bin(n)) - 2, "bits")
+k = (e * d - 1) // phi
+print("e*d = 1 + k*phi with k =", k)
+check("gcd(e, phi) = 1", g == 1)
+check("e*d mod phi = 1", e * d % phi == 1)
+check("n = p*q is composite", not is_prime(n))
+check("Fermat for p: 2^(p-1) mod p = 1", modpow(2, p - 1, p) == 1)
+check("Euler for n: 7^phi mod n = 1", modpow(7, phi, n) == 1)
+export(e_public=e)
+export(key_bits=len(bin(n)) - 2)
+export(k_multiple=k)
+```
+
+The first two checks are exactly what the scheme needs. The last two show the theorem behind it: raising to the power $\varphi$ gives back 1.
+
+Public key: $(e, n)$. Private key: $(d, n)$. Only $d$, $p$, $q$ and $\varphi$ are secret.
+
+## 3. Encrypt and decrypt
+
+The message is a number $m$ with $0 \le m < n$. Encryption is $c = m^e \bmod n$, decryption is $m = c^d \bmod n$.
+
+```python
+m = 42000000
+c = modpow(m, e, n)
+back = modpow(c, d, n)
+print("message    m =", m)
+print("ciphertext c = m^e mod n =", c)
+print("decrypted    = c^d mod n =", back)
+check("round trip recovers 42,000,000", back == m)
+check("encrypting twice does not give the message back", modpow(c, e, n) != m)
+```
+
+## 4. More messages
+
+Values near the ends of the range and a few ordinary ones. The numbers 0 and 1 are fixed points (they encrypt to themselves), one reason real systems pad the message before encrypting it.
+
+```python
+msgs = [0, 1, 12345, 999999999, 1500000000000, n - 1]
+print("%16s  %20s  %16s  ok" % ("message", "ciphertext", "decrypted"))
+allok = True
+for mm in msgs:
+    cc = modpow(mm, e, n)
+    bb = modpow(cc, d, n)
+    ok = bb == mm
+    allok = allok and ok
+    print("%16d  %20d  %16d  %s" % (mm, cc, bb, "yes" if ok else "NO"))
+check("every message round-trips", allok)
+check("the built-in pow gives the same ciphertexts", all(modpow(mm, e, n) == pow(mm, e, n) for mm in msgs))
+
+# how scrambled is it? plot c/n against m/n for the first 300 messages
+import plotly.graph_objects as go
+ms = list(range(1, 301))
+cs = [modpow(mm, e, n) / n for mm in ms]
+fig = go.Figure()
+fig.add_trace(go.Scatter(x=ms, y=[mm / n for mm in ms], mode="lines", name="m / n (the message)"))
+fig.add_trace(go.Scatter(x=ms, y=cs, mode="markers", marker=dict(size=4), name="c / n (the ciphertext)"))
+fig.update_layout(height=320, margin=dict(l=56, r=16, t=30, b=44), xaxis_title="message m", yaxis_title="fraction of the modulus",
+                  title="Consecutive messages encrypt to unrelated numbers", legend=dict(orientation="h", y=-0.25))
+fig.show()
+```
+
+Messages 1 to 300 sit at the very bottom of the range, yet their ciphertexts are spread over the whole interval from 0 to $n$ with no visible pattern. Nothing about $c$ hints at $m$ without the key.
+
+## 5. A digital signature
+
+Signing is the same operation turned around: the key holder raises a fingerprint of the document to the **private** exponent, and anybody can undo that with the **public** exponent and see that it matches. Here the fingerprint is just a number; a real scheme hashes the document first.
+
+```python
+h = 314159265
+sig = modpow(h, d, n)
+seen = modpow(sig, e, n)
+print("document fingerprint h =", h)
+print("signature  s = h^d mod n =", sig)
+print("verified   s^e mod n     =", seen)
+check("the signature verifies", seen == h)
+check("a changed document (h + 1) fails verification", seen != h + 1)
+check("a tampered signature (s + 1) fails verification", modpow(sig + 1, e, n) != h)
+```
+
+## 6. Why the toy is a toy
+
+The modulus is public. If an attacker can find $p$ or $q$, the private key follows at once. Pollard's rho method finds a factor of size $10^9$ after a number of steps of the order of $\sqrt{10^9} \approx 3 \times 10^4$, so this 61-bit key breaks in about a second. Trial division would need a billion divisions.
+
+```python
+import time
+
+def gcd(a, b):
+    while b:
+        a, b = b, a % b
+    return a
+
+def rho(nn):
+    x, y, cst, dd = 2, 2, 1, 1
+    steps = 0
+    while dd == 1:
+        x = (x * x + cst) % nn
+        y = (y * y + cst) % nn
+        y = (y * y + cst) % nn
+        dd = gcd(abs(x - y), nn)
+        steps += 1
+    return dd, steps
+
+t0 = time.time()
+f1, steps = rho(n)
+f2 = n // f1
+secs = time.time() - t0
+print("factor found:", f1, "and", f2, "after", steps, "steps (%.2f s)" % secs)
+check("the factors are p and q", sorted([f1, f2]) == [p, q])
+d_broken = inverse(e, (f1 - 1) * (f2 - 1))
+check("the attacker's private exponent equals ours", d_broken == d)
+check("so the attacker can read the message", modpow(c, d_broken, n) == m)
+print("checks failed in this sheet:", fails)
+export(failed_checks=fails)
+export(rho_steps=steps)
+```
+
+### Result
+failed: failed_checks | number of failed checks {key}
+if failed_checks == 0: "PASS: all RSA checks passed" else: "FAIL: see the FAIL lines above"
+rho_cost: rho_steps | Pollard rho steps needed to break the toy key {key}
+
+## What to change
+- Pick larger starting primes (for example from $10^{10}$) and watch `rho` slow down: its cost grows with the square root of the smaller prime. The Python limit is 10 s per block.
+- Set `e = 3` in section 2: the gcd check fails and `inverse` raises an error, because 3 divides $p - 1 = 1000000008$, so $e$ has no inverse modulo $\varphi$. A valid public exponent must be coprime to $\varphi$.
+- Encrypt a message larger than $n$: it comes back reduced modulo $n$, not as you sent it.
+- Sign a different fingerprint and verify it, or tamper with the signature by one and see verification fail.
+
+## Source
+Follows the cookbook example crypto_rsa.rs of the symplex library (github.com/cgorski/symplex, MIT OR Apache-2.0).

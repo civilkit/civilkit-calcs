@@ -1,0 +1,351 @@
+<!--sheet-->
+# Proving an inequality exactly: Handelman certificates
+
+Checking a design inequality over a range of loads is normally done by sampling: try a grid of values, see no violation, move on. That cannot catch a violation that lives between the samples, and it cannot handle a bound that is tight. A **certificate** is a different kind of answer: an exact identity that proves the inequality for every point of the range, and that anyone can re-check by expanding it. This sheet proves one inequality on a box with a Handelman certificate, finds the certificate with a small exact linear program written in the sheet, and then checks it twice.
+
+## 1. The claim
+
+For $0 \le r \le \tfrac12$ and $0 \le f \le 1$, prove
+
+$$g(r, f) = \frac14 - \left(r - \frac f2\right)^2 \ge 0$$
+
+Here $r$ and $f$ stand for two normalised loads, and $g$ is the margin left in a check of the form "offset squared must not exceed one quarter". The same method proves a utilisation bound $u \le 1$ over a box of load ratios without sampling it: write the margin $1 - u$ as the polynomial $g$ and look for a certificate.
+
+The statement is true, because $|r - f/2| \le \tfrac12$ on the box, and it is **tight**: $g = 0$ at the corners $(\tfrac12, 0)$ and $(0, 1)$.
+
+g(r, f): 1/4 - (r - f/2)^2
+
+### Check 1: the two tight corners
+g_a: g(1/2, 0) | value at the corner (1/2, 0)
+g_b: g(0, 1) | value at the corner (0, 1)
+g_mid: g(1/4, 1/2) | value at an interior point
+if g_a == 0 and g_b == 0: "PASS: g is exactly zero at both corners" else: "FAIL: corner values are not zero"
+if g_mid > 0: "PASS: g is positive inside the box at the sample point" else: "FAIL: g is not positive inside"
+
+## 2. The idea
+
+The four box constraints are non-negative on the box, by definition:
+
+$$g_1 = r, \qquad g_2 = \tfrac12 - r, \qquad g_3 = f, \qquad g_4 = 1 - f$$
+
+So is every product of them. If $g$ can be written as a sum of such products with **non-negative** rational weights $\lambda_i$,
+
+$$g = \sum_i \lambda_i\, h_i, \qquad h_i \in \{1,\ g_j,\ g_j g_k\}, \qquad \lambda_i \ge 0$$
+
+then $g \ge 0$ on the box, and that one line is the whole proof. Matching the coefficient of each monomial $r^a f^b$ on both sides turns the search for the $\lambda_i$ into a linear system $M\lambda = b$, $\lambda \ge 0$. Handelman's theorem says a polynomial that is strictly positive on the box has such a representation if the products are allowed to be of high enough degree; a polynomial that touches zero at a corner may still have one, as here.
+
+## 3. Exact arithmetic in a few lines
+
+A floating-point proof would be suspicious, so the arithmetic is exact. A rational number is a pair of integers (numerator, denominator) in lowest terms, and a polynomial in $r$ and $f$ is a dictionary from exponents $(a, b)$ to coefficients. Python integers have unlimited size, so nothing is ever rounded.
+
+```python
+import time
+import math
+import plotly.graph_objects as go
+
+fails = 0
+def check(label, ok):
+    global fails
+    if not ok:
+        fails += 1
+    print(("PASS: " if ok else "FAIL: ") + label)
+
+def gcd(a, b):
+    while b:
+        a, b = b, a % b
+    return abs(a)
+
+def q(a, b=1):                       # the rational a/b, in lowest terms
+    if b < 0:
+        a, b = -a, -b
+    g = gcd(a, b)
+    return (a // g, b // g)
+
+def qadd(x, y): return q(x[0] * y[1] + y[0] * x[1], x[1] * y[1])
+def qmul(x, y): return q(x[0] * y[0], x[1] * y[1])
+def qinv(x): return q(x[1], x[0])
+def qsign(x): return (x[0] > 0) - (x[0] < 0)
+def qstr(x): return str(x[0]) if x[1] == 1 else "%d/%d" % x
+ZERO, ONE = q(0), q(1)
+
+def padd(a, b):                      # polynomial sum
+    out = dict(a)
+    for k, v in b.items():
+        out[k] = qadd(out.get(k, ZERO), v)
+    return {k: v for k, v in out.items() if v != ZERO}
+
+def pmul(a, b):                      # polynomial product
+    out = {}
+    for (i, j), u in a.items():
+        for (k, l), v in b.items():
+            out[(i + k, j + l)] = qadd(out.get((i + k, j + l), ZERO), qmul(u, v))
+    return {k: v for k, v in out.items() if v != ZERO}
+
+def pscale(a, c):
+    return {k: qmul(v, c) for k, v in a.items() if qmul(v, c) != ZERO}
+
+def peval(a, r, f):                  # exact value at a rational point
+    tot = ZERO
+    for (i, j), v in a.items():
+        t = v
+        for _ in range(i): t = qmul(t, r)
+        for _ in range(j): t = qmul(t, f)
+        tot = qadd(tot, t)
+    return tot
+
+R = {(1, 0): ONE}
+F = {(0, 1): ONE}
+NEG = q(-1)
+gens = [("r", R), ("(1/2 - r)", padd({(0, 0): q(1, 2)}, pscale(R, NEG))),
+        ("f", F), ("(1 - f)", padd({(0, 0): ONE}, pscale(F, NEG)))]
+
+def goal_poly(c0):                   # c0 - (r - f/2)^2 as a polynomial
+    inner = padd(R, pscale(F, q(-1, 2)))
+    return padd({(0, 0): c0}, pscale(pmul(inner, inner), NEG))
+
+goal = goal_poly(q(1, 4))
+print("g(r, f) =", " + ".join("(%s) r^%d f^%d" % (qstr(v), i, j) for (i, j), v in sorted(goal.items(), reverse=True)))
+check("the expanded goal has the four terms -r^2 + r f - f^2/4 + 1/4",
+      goal == {(2, 0): q(-1), (1, 1): q(1), (0, 2): q(-1, 4), (0, 0): q(1, 4)})
+check("g(1/2, 0) = 0 exactly", peval(goal, q(1, 2), ZERO) == ZERO)
+check("g(0, 1) = 0 exactly", peval(goal, ZERO, ONE) == ZERO)
+```
+
+## 4. Why sampling cannot do it
+
+Sampling can only tell you that no violation was found. To see the difference, take a statement that is **false**: $g - 10^{-6} \ge 0$. It fails by a hair, in two tiny regions at the tight corners. A fine grid of cell centres and twenty thousand random points both say it holds. Only an exact evaluation at the corner reveals the truth.
+
+```python
+def val(r, f, c0=0.25):
+    return c0 - (r - f / 2) ** 2
+
+seed = 12345
+def rnd():                           # a small deterministic pseudo-random generator
+    global seed
+    seed = (seed * 1103515245 + 12345) % 2147483648
+    return seed / 2147483648.0
+
+eps = 0.000001
+grid = min(val((i + 0.5) / 100 * 0.5, (j + 0.5) / 100) - eps for i in range(100) for j in range(100))
+rand = min(val(rnd() * 0.5, rnd()) - eps for _ in range(20000))
+print("false claim g - 1e-6 >= 0:")
+print("  smallest value on a 100 x 100 grid of cell centres: %.3e" % grid)
+print("  smallest value in 20000 random points:              %.3e" % rand)
+exact = peval(padd(goal, {(0, 0): q(-1, 1000000)}), q(1, 2), ZERO)
+print("  exact value at the corner (1/2, 0):                 %s" % qstr(exact))
+check("sampling misses the violation (both minima are positive)", grid > 0 and rand > 0)
+check("an exact evaluation at the corner refutes the false claim", qsign(exact) < 0)
+
+rs = [0.5 * i / 40 for i in range(41)]
+fs = [j / 40 for j in range(41)]
+fig = go.Figure()
+fig.add_trace(go.Contour(x=rs, y=fs, z=[[val(a, b) for a in rs] for b in fs], ncontours=12, colorscale="Blues", showscale=False,
+                         contours=dict(coloring="heatmap")))
+fig.add_trace(go.Scatter(x=[0.5, 0], y=[0, 1], mode="markers", marker=dict(size=11, color="#e07000"), name="g = 0 (tight corners)"))
+fig.update_layout(height=340, margin=dict(l=56, r=16, t=30, b=44), xaxis_title="r", yaxis_title="f",
+                  title="Margin g(r, f) over the box", legend=dict(orientation="h", y=-0.25))
+fig.show()
+```
+
+The margin is largest (one quarter) along the diagonal $r = f/2$ and falls to zero exactly at the two corners, so any proof has to be sharp there. A certificate is.
+
+## 5. The coefficient matrix
+
+The products of at most two constraints are the polynomials $1$, the four $g_j$ and the ten $g_j g_k$ with $j \le k$: fifteen in all. Each one is a column of the matrix, and its rows are the six monomials that occur. The table shows each column as the six coefficients of $r^2,\ rf,\ r,\ f^2,\ f,\ 1$.
+
+```python
+def family(deg):
+    fam = [("1", {(0, 0): ONE})]
+    def grow(start, name, poly, left):
+        for i in range(start, 4):
+            nm = gens[i][0] if not name else name + "*" + gens[i][0]
+            pl = pmul(poly, gens[i][1])
+            fam.append((nm, pl))
+            if left > 1:
+                grow(i, nm, pl, left - 1)
+    grow(0, "", {(0, 0): ONE}, deg)
+    return fam
+
+fam2 = family(2)
+mons = [(2, 0), (1, 1), (1, 0), (0, 2), (0, 1), (0, 0)]
+print("%-22s %s" % ("product h_i", "   ".join("%5s" % m for m in ["r^2", "r f", "r", "f^2", "f", "1"])))
+for nm, pl in fam2:
+    print("%-22s %s" % (nm, "   ".join("%5s" % qstr(pl.get(m, ZERO)) for m in mons)))
+print("%-22s %s" % ("goal b", "   ".join("%5s" % qstr(goal.get(m, ZERO)) for m in mons)))
+check("there are fifteen products of degree <= 2", len(fam2) == 15)
+export(n_products=len(fam2))
+```
+
+## 6. Solving the linear feasibility problem exactly
+
+Find $\lambda \ge 0$ with $M\lambda = b$. A **simplex phase 1** does this: add one artificial variable per row, then pivot to drive their sum to zero. With exact rationals the answer is either a genuine non-negative solution (the sum reaches 0) or a proof that none exists (the sum stays positive). Bland's rule (always the first improving column, ties by the lowest index) guarantees that it stops.
+
+```python
+def feasible(A, b):
+    m, n = len(A), len(A[0])
+    T = []
+    for i in range(m):
+        s = q(-1) if qsign(b[i]) < 0 else ONE
+        T.append([qmul(A[i][j], s) for j in range(n)] + [ONE if k == i else ZERO for k in range(m)] + [qmul(b[i], s)])
+    basis = [n + i for i in range(m)]
+    z = [ZERO] * (n + m + 1)               # reduced costs of "sum of artificials"
+    for i in range(m):
+        z = [qadd(z[j], qmul(T[i][j], NEG)) for j in range(n + m + 1)]
+        z[n + i] = ZERO
+    while True:
+        col = -1
+        for j in range(n + m):          # Bland: the first column with a negative reduced cost
+            if qsign(z[j]) < 0:
+                col = j
+                break
+        if col < 0:
+            break
+        best = None
+        for i in range(m):
+            if qsign(T[i][col]) > 0:
+                ratio = qmul(T[i][-1], qinv(T[i][col]))
+                if best is None or qsign(qadd(ratio, qmul(best[0], NEG))) < 0 or (ratio == best[0] and basis[i] < basis[best[1]]):
+                    best = (ratio, i)
+        i = best[1]
+        pv = qinv(T[i][col])
+        T[i] = [qmul(v, pv) for v in T[i]]
+        for k in range(m):
+            if k != i and T[k][col] != ZERO:
+                fct = qmul(T[k][col], NEG)
+                T[k] = [qadd(T[k][j], qmul(fct, T[i][j])) for j in range(n + m + 1)]
+        fct = qmul(z[col], NEG)
+        z = [qadd(z[j], qmul(fct, T[i][j])) for j in range(n + m + 1)]
+        basis[i] = col
+    lam = [ZERO] * n
+    for i in range(m):
+        if basis[i] < n:
+            lam[basis[i]] = T[i][-1]
+    return z[-1] == ZERO, lam, qmul(z[-1], NEG)
+
+def search(target, deg):
+    fam = family(deg)
+    rows = sorted({k for _, p in fam for k in p} | set(target), reverse=True)
+    A = [[p.get(mn, ZERO) for _, p in fam] for mn in rows]
+    b = [target.get(mn, ZERO) for mn in rows]
+    ok, lam, resid = feasible(A, b)
+    return fam, ok, lam, resid
+
+t0 = time.time()
+fam, ok, lam, resid = search(goal, 2)
+secs = time.time() - t0
+print("feasible:", ok, "  (%.2f s)" % secs)
+used = [(fam[i][0], l) for i, l in enumerate(lam) if l != ZERO]
+for nm, l in used:
+    print("  lambda = %-4s  *  %s" % (qstr(l), nm))
+check("a non-negative solution exists at degree 2", ok)
+check("every lambda is >= 0", all(qsign(l) >= 0 for l in lam))
+export(certificate_terms=len(used))
+export(solve_seconds=secs)
+```
+
+## 7. Verifying the certificate
+
+The search is only a way of finding the weights. The proof is the identity, and it is verified here by two routes that do not use the solver: expand the right-hand side and compare coefficients with $g$, and evaluate the *unexpanded* right-hand side at 121 exact rational points of the box, where every term must be non-negative and the sum must equal $g$.
+
+```python
+total = {}
+for i, l in enumerate(lam):
+    total = padd(total, pscale(fam[i][1], l))
+check("route 1: the expanded sum of lambda_i h_i equals g, coefficient by coefficient", total == goal)
+
+pts_ok = True
+terms_ok = True
+for i in range(11):
+    for j in range(11):
+        rr, ff = q(i, 20), q(j, 10)                       # the grid 0, 1/20 .. 1/2 by 0, 1/10 .. 1
+        s = ZERO
+        for nm, l in used:
+            idx = [x[0] for x in fam].index(nm)
+            t = qmul(l, peval(fam[idx][1], rr, ff))
+            terms_ok = terms_ok and qsign(t) >= 0
+            s = qadd(s, t)
+        pts_ok = pts_ok and s == peval(goal, rr, ff)
+check("route 2: the certificate equals g at all 121 exact grid points", pts_ok)
+check("every term of the certificate is >= 0 at those points", terms_ok)
+
+lcm = 1
+for _, l in used:
+    lcm = lcm * l[1] // gcd(lcm, l[1])
+print()
+print("g(r, f) = " + "\n          + ".join("%s * %s" % (qstr(l), nm) for nm, l in used))
+print("%d * g = " % lcm + " + ".join("%s*%s" % (qstr(qmul(l, q(lcm))), nm) for nm, l in used))
+expected = {"r*(1/2 - r)": q(1), "r*f": q(1, 2), "(1/2 - r)*(1 - f)": q(1, 2), "f*(1 - f)": q(1, 4)}
+check("it is the same certificate as the reference worked example (weights 1, 1/2, 1/2, 1/4)", dict(used) == expected)
+export(denominator_lcm=lcm)
+```
+
+Written out for the record:
+
+$$\frac14 - \left(r - \frac f2\right)^2 = r\left(\tfrac12 - r\right) + \tfrac12\, r f + \tfrac12 \left(\tfrac12 - r\right)(1 - f) + \tfrac14\, f(1 - f)$$
+
+Each term is a non-negative weight times a product of factors that are non-negative on the box, so the left side cannot be negative there. At $(\tfrac12, 0)$ and at $(0, 1)$ all four products are exactly zero, so the right side reproduces the zero of $g$ at the tight corners, which no sampled margin could do.
+
+### Check 2: the same identity in ordinary floating point
+The hand-written certificate again, as sheet lines, compared with $g$ at five scattered points. This is a floating-point sanity check of the typing, not the proof (the proof is the exact route above).
+
+cert(r, f): r*(1/2 - r) + 1/2*r*f + 1/2*(1/2 - r)*(1 - f) + 1/4*f*(1 - f)
+e_1: abs(g(0.5, 0) - cert(0.5, 0))
+e_2: abs(g(0, 1) - cert(0, 1))
+e_3: abs(g(0.1, 0.9) - cert(0.1, 0.9))
+e_4: abs(g(0.37, 0.21) - cert(0.37, 0.21))
+e_5: abs(g(0.25, 0.5) - cert(0.25, 0.5))
+e_max: max(e_1, e_2, e_3, e_4, e_5) | largest difference {key}
+if e_max < 0.000000000001: "PASS: certificate and goal agree to rounding at five points" else: "FAIL: they differ"
+
+## 8. Degree 1 against degree 2
+
+With only the constraints themselves (degree 1) the right-hand side is a linear function and cannot produce the $-r^2$ in $g$. Degree 2 is the smallest degree that can. Raising the degree further gives more certificates, but never a simpler one.
+
+```python
+print("degree  products  certificate  non-zero weights")
+rows = {}
+for deg in (1, 2, 3):
+    fm, ok, lm, rs_ = search(goal, deg)
+    nz = sum(1 for l in lm if l != ZERO)
+    rows[deg] = ok
+    print("%6d  %8d  %-11s  %d" % (deg, len(fm), "yes" if ok else "no (residual %s)" % qstr(rs_), nz if ok else 0))
+check("degree 1: no certificate", not rows[1])
+check("degree 2: certificate found", rows[2])
+check("degree 3: certificate found as well", rows[3])
+export(deg1_found=1 if rows[1] else 0)
+export(deg2_found=1 if rows[2] else 0)
+```
+
+## 9. When there is no certificate
+
+Two cases, both on the same box. A **false** goal, $\tfrac18 - (r - f/2)^2$, has none at any degree, and an exact point shows it false. A **true** goal, $(r - \tfrac14)^2 \ge 0$, has none either, even though it is obviously non-negative: it touches zero in the *interior* of the box, and every Handelman product is strictly positive there. Failing to find a certificate does not mean the inequality is false; it means this kind of proof does not apply.
+
+```python
+bad = goal_poly(q(1, 8))
+touch = pmul(padd(R, {(0, 0): q(-1, 4)}), padd(R, {(0, 0): q(-1, 4)}))
+for name, tgt in (("false:  1/8 - (r - f/2)^2", bad), ("interior zero:  (r - 1/4)^2", touch)):
+    res = []
+    for deg in (2, 3, 4):
+        res.append("degree %d: %s" % (deg, "yes" if search(tgt, deg)[1] else "no"))
+    print("%-30s %s" % (name, "   ".join(res)))
+v = peval(bad, q(1, 2), ZERO)
+print("exact value of the false goal at (1/2, 0): %s" % qstr(v))
+check("the false goal is negative at the corner (1/2, 0)", qsign(v) < 0)
+check("(r - 1/4)^2 has no certificate up to degree 4", not any(search(touch, d)[1] for d in (2, 3, 4)))
+print("checks failed in this sheet:", fails)
+export(failed_checks=fails)
+```
+
+### Result
+failed: failed_checks | number of failed checks {key}
+terms: certificate_terms | non-zero terms in the degree 2 certificate {key}
+if failed_checks == 0 and deg2_found == 1 and deg1_found == 0: "PASS: the inequality is proved on the box by a degree 2 certificate, and there is none at degree 1" else: "FAIL: see the FAIL lines above"
+
+## What to change
+- Change the constant in `goal = goal_poly(q(1, 4))` to `q(1, 3)`. The goal is now strictly positive on the box and the degree 2 search returns the same four terms plus a constant term $\tfrac1{12}\cdot 1$ (the slack).
+- Change it to `q(1, 5)`. The statement is now false (it is $-\tfrac1{20}$ at the corner $(\tfrac12, 0)$) and the search reports no certificate.
+- Raise the degree of the search in section 8 to 4, 5 or 6: the number of products grows to 70, 126 and 210, the exact simplex takes about 0.2, 0.6 and 1.6 s in a browser, and the 10 s limit per Python block eventually applies.
+- Write your own goal as a dictionary of exponents, for example `mine = {(1, 0): q(1), (0, 1): q(-1, 3)}` for $r - f/3$, and ask `search(mine, 2)[1]` whether it is provably non-negative on the box (it is not: at $(0, 1)$ it is $-\tfrac13$).
+
+## Source
+Follows the cookbook example polynomial-certificates.md of the symplex library (github.com/cgorski/symplex, MIT OR Apache-2.0).
