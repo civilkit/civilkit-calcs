@@ -1076,3 +1076,6 @@ n: 1000 kg -> bag
         ['How are ratios shown?', 'As plain numbers. Add an arrow to % to show a ratio as a percentage; the value itself does not change.'],
     ],
 });
+
+import { cookbookPages } from './pages-cookbook.mjs';
+pages.push(...(await cookbookPages({ V, tbl, notCode, taskSteps })));

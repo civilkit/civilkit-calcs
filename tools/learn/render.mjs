@@ -226,7 +226,7 @@ ${footer()}
 /** The groups of the hub, in order: [group id, heading, intro, [area, subheading]...]. */
 export const GROUPS = [
     ['calculator', 'Calculators', 'Each calculator is a sheet that opens in the app as a form, with a worked example whose numbers come from the engine. They are generic textbook calculations, not design-code checks.',
-        [['structural', 'Structural'], ['geotechnical', 'Geotechnical'], ['hydraulics', 'Hydraulics'], ['materials', 'Materials']]],
+        [['structural', 'Structural'], ['geotechnical', 'Geotechnical'], ['hydraulics', 'Hydraulics'], ['materials', 'Materials'], ['controls', 'Controls and signals'], ['robotics', 'Robotics and mechanics'], ['computing', 'Mathematics and computing']]],
     ['alternative', 'Alternatives and migration', 'For engineers comparing tools, or bringing worksheets across from another one.', []],
     ['guide', 'Guides', 'How-to pages on what a calculation sheet can do. The full manual is the <a href="/calcs/guide/">user guide</a>, and every release is on <a href="/calcs/whats-new/">What\'s new</a>.', []],
 ];

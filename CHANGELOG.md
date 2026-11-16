@@ -12,6 +12,7 @@ under "Crates" at the end, on plain 0.x semver, and are tagged `<crate-name>-v<v
 ## [Unreleased]
 
 ### Added
+- **Four Cookbook pages on the web** - PID controller design, digital filter design, robot arm kinematics and an RSA worked example each have a page under Calculators and guides, with the numbers from a real run of the sheet, a live embed and a link that opens the sheet. They are listed on the hub, in the sitemap and on the embed page.
 - **Seven new guide pages** - Language rules (lines, brackets, precedence, number limits, rounding and format), Keyword arguments, Numerical methods (`$Root`, `$Inf`, `$Sup`, `$Area`, `$Slope`, `$Derivative`, `$Sum`, `$Product`, `$Repeat`, `$While`), Metadata comments, Linter messages (every code with its message and fix), HTML and styling in a worksheet (the report classes), and High-performance vectors and matrices. Every example on them is run by the guide check.
 - **Do not ask again for Python** - The question "This worksheet runs Python code" has a box, Do not ask again on this device. Tick it with Run Python and worksheets run their Python without the question; clearing the site's data in the browser brings the question back.
 

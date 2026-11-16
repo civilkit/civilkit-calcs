@@ -1,0 +1,409 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Digital low-pass filter design: bilinear transform</title>
+<meta name="description" content="Turn an analogue low-pass into a digital filter with the bilinear transform: coefficients, frequency prewarping, DC and Nyquist checks, frequency response.">
+<meta name="robots" content="index, follow, max-image-preview:large">
+<meta name="color-scheme" content="light dark">
+<link rel="canonical" href="https://civilkit.io/calcs/learn/digital-filter-design-bilinear-transform/">
+<link rel="stylesheet" href="/calcs/learn/learn.css">
+<link rel="icon" href="/calcs/icon-192.png" sizes="192x192">
+<meta property="og:type" content="website">
+<meta property="og:site_name" content="CivilKit Calcs">
+<meta property="og:title" content="Digital low-pass filter design: bilinear transform">
+<meta property="og:description" content="Turn an analogue low-pass into a digital filter with the bilinear transform: coefficients, frequency prewarping, DC and Nyquist checks, frequency response.">
+<meta property="og:url" content="https://civilkit.io/calcs/learn/digital-filter-design-bilinear-transform/">
+<meta property="og:image" content="https://civilkit.io/calcs/icon-512.png">
+<meta name="twitter:card" content="summary">
+<meta name="twitter:title" content="Digital low-pass filter design: bilinear transform">
+<meta name="twitter:description" content="Turn an analogue low-pass into a digital filter with the bilinear transform: coefficients, frequency prewarping, DC and Nyquist checks, frequency response.">
+<meta name="twitter:image" content="https://civilkit.io/calcs/icon-512.png">
+<script type="application/ld+json">
+{
+ "@context": "https://schema.org",
+ "@graph": [
+  {
+   "@type": "BreadcrumbList",
+   "itemListElement": [
+    {
+     "@type": "ListItem",
+     "position": 1,
+     "name": "CivilKit",
+     "item": "https://civilkit.io/"
+    },
+    {
+     "@type": "ListItem",
+     "position": 2,
+     "name": "Calcs",
+     "item": "https://civilkit.io/calc/"
+    },
+    {
+     "@type": "ListItem",
+     "position": 3,
+     "name": "Calculators and guides",
+     "item": "https://civilkit.io/calcs/learn/"
+    },
+    {
+     "@type": "ListItem",
+     "position": 4,
+     "name": "Digital filter design",
+     "item": "https://civilkit.io/calcs/learn/digital-filter-design-bilinear-transform/"
+    }
+   ]
+  },
+  {
+   "@type": "HowTo",
+   "name": "How to design a digital low-pass filter from an analogue prototype",
+   "description": "Turn an analogue low-pass into a digital filter with the bilinear transform: coefficients, frequency prewarping, DC and Nyquist checks, frequency response.",
+   "step": [
+    {
+     "@type": "HowToStep",
+     "position": 1,
+     "name": "Open the template",
+     "text": "Choose Open this template on this page. The sheet opens in a new tab of CivilKit Calcs, with the inputs set to the values used on this page."
+    },
+    {
+     "@type": "HowToStep",
+     "position": 2,
+     "name": "Switch to Input mode",
+     "text": "In the results bar choose Input. The input lines become boxes, lists, buttons and ticks."
+    },
+    {
+     "@type": "HowToStep",
+     "position": 3,
+     "name": "Enter your values",
+     "text": "Change the inputs to your own. The cutoff, the sample rate and the prewarp box are the three inputs. Every change recalculates the whole page."
+    },
+    {
+     "@type": "HowToStep",
+     "position": 4,
+     "name": "Read and export the result",
+     "text": "Read the results and the OK or not OK lines under them. Use Report, then Print PDF, Word or Excel, to keep the calculation with its workings."
+    }
+   ]
+  },
+  {
+   "@type": "FAQPage",
+   "mainEntity": [
+    {
+     "@type": "Question",
+     "name": "What is the bilinear transform?",
+     "acceptedAnswer": {
+      "@type": "Answer",
+      "text": "A way to turn an analogue transfer function H(s) into a digital one H(z) by replacing s with (2/T)(z - 1)/(z + 1). It keeps a stable filter stable."
+     }
+    },
+    {
+     "@type": "Question",
+     "name": "What is frequency prewarping?",
+     "acceptedAnswer": {
+      "@type": "Answer",
+      "text": "The transform distorts the frequency axis through a tangent. Prewarping replaces the cutoff in the transform with (2/T) tan(wc T / 2), so the digital -3 dB point falls exactly on the cutoff you asked for."
+     }
+    },
+    {
+     "@type": "Question",
+     "name": "Why is the Nyquist gain zero?",
+     "acceptedAnswer": {
+      "@type": "Answer",
+      "text": "The transform maps infinite analogue frequency to z = -1, half the sample rate, where this filter has a zero."
+     }
+    },
+    {
+     "@type": "Question",
+     "name": "Does the sheet need Python?",
+     "acceptedAnswer": {
+      "@type": "Answer",
+      "text": "No. Everything is ordinary sheet calculation and a short loop."
+     }
+    },
+    {
+     "@type": "Question",
+     "name": "Can I use the coefficients in a real product?",
+     "acceptedAnswer": {
+      "@type": "Answer",
+      "text": "Use them to learn and to check your own derivation. The sheet is a worked example, not a certified program, and it is not meant for safety-critical use."
+     }
+    }
+   ]
+  }
+ ]
+}
+</script>
+</head>
+<body>
+<a class="skip" href="#main">Skip to the content</a>
+<header class="site">
+<a class="brand" href="https://civilkit.io/calc/">CivilKit Calcs</a>
+<nav aria-label="Site">
+<a href="https://civilkit.io/calc/">Calcs home</a>
+<a href="/calcs/learn/">Calculators and guides</a>
+<a href="/calcs/guide/">User guide</a>
+<a href="/calcs/whats-new/">What's new</a>
+<a href="/calcs/">Open Calcs</a>
+</nav>
+</header>
+<main id="main">
+<nav class="crumbs" aria-label="Breadcrumb"><a href="https://civilkit.io/">CivilKit</a> / <a href="https://civilkit.io/calc/">Calcs</a> / <a href="/calcs/learn/">Calculators and guides</a> / <span>Digital filter design</span></nav>
+<h1>Digital filter design with the bilinear transform</h1>
+<div class="lead">
+<p>A sensor signal usually needs smoothing before a controller or a logger sees it. The smoothing is often designed as an analogue RC low-pass and then run on a microcontroller as a difference equation. This sheet does that conversion for a first-order low-pass using the bilinear (Tustin) transform: it gives you the coefficients, checks the gain at DC and at the Nyquist frequency, simulates a step response, and plots the digital and analogue frequency responses side by side so you can see the frequency warping.</p>
+<p>You give it a cutoff and a sample rate in hertz, and it hands back the two-tap filter and a C update function.</p>
+</div>
+<p class="cta"><a class="button" href="/calcs/?sample=cookbook-filter">Open this sheet in Calcs</a> <a class="button ghost" href="/calcs/">Open a blank sheet</a></p>
+<section>
+<h2>What it computes</h2>
+<p>The analogue prototype is H(s) = wc/(s + wc), with wc = 2 pi fc. The bilinear transform replaces s by (2/T)(z - 1)/(z + 1), where T is the sample time 1/fs. With k = wc T / 2 the result is a first-order digital filter with b0 = b1 = k/(1 + k) and a1 = (k - 1)/(k + 1). The filter runs as y[n] = b0 x[n] + b1 x[n-1] - a1 y[n-1].</p>
+<p>The sheet evaluates H(z) at z = 1 (DC) and z = -1 (half the sample rate), runs a unit step through 100 samples, plots both magnitudes in dB, and finds where the digital -3 dB point lands.</p>
+</section>
+<figure class="video">
+<video controls preload="none" width="960" height="540" aria-label="Templates with inputs" src="/calcs/guide/videos/05-templates-with-inputs.mp4"></video>
+<figcaption>Video: Templates with inputs (about 85 seconds). Read the chapter <a href="/calcs/guide/templates">Templates with inputs</a>.</figcaption>
+</figure>
+<section class="try" id="try-it">
+<h2>Try it</h2>
+<iframe class="embed" src="/calcs/?embed=1&amp;sample=cookbook-filter" width="100%" height="560" loading="lazy" title="Digital filter design: live sheet" sandbox="allow-scripts allow-same-origin allow-popups allow-popups-to-escape-sandbox"></iframe>
+<p class="fallback"><a href="/calcs/?sample=cookbook-filter">Open the sheet in Calcs</a> or <a href="/calcs/embed/">embed it</a>.</p>
+</section>
+<section>
+<h2>Frequency prewarping</h2>
+<p>The transform squeezes the whole analogue frequency axis from 0 to infinity onto 0 to fs/2, through Omega = (2/T) tan(w T / 2). The digital -3 dB point is therefore at 2 atan(k) radians per sample rather than at wc T. The difference is tiny when the cutoff is far below the sample rate and grows quickly near fs/2.</p>
+<p>Prewarping fixes the one frequency you care about. With the prewarp box ticked, wc inside the transform is replaced by (2/T) tan(wc T / 2), which puts the digital -3 dB point exactly on fc.</p>
+</section>
+<section>
+<h2>Worked example</h2>
+<p>The base case is a cutoff of 1 rad/s (about 0.159 Hz) sampled at 10 Hz. Engine results:</p>
+<table>
+<thead><tr><th>Quantity</th><th>Result</th></tr></thead>
+<tbody>
+<tr><td>Sample time T</td><td><span class="v" data-run="base" data-key="T">0.1 s</span></td></tr>
+<tr><td>k = wc T / 2</td><td><span class="v" data-run="base" data-key="k">0.05</span></td></tr>
+<tr><td>Coefficient b0</td><td><span class="v" data-run="base" data-key="b0">0.04761905</span></td></tr>
+<tr><td>Coefficient b1</td><td><span class="v" data-run="base" data-key="b1">0.04761905</span></td></tr>
+<tr><td>Coefficient a1</td><td><span class="v" data-run="base" data-key="a1">-0.9047619</span></td></tr>
+<tr><td>Gain at DC</td><td><span class="v" data-run="base" data-key="H_dc">1</span></td></tr>
+<tr><td>Gain at Nyquist</td><td><span class="v" data-run="base" data-key="H_ny">0</span></td></tr>
+<tr><td>First step sample y[0]</td><td><span class="v" data-run="base" data-key="y_first">0.04761905</span></td></tr>
+<tr><td>Step output after 100 samples</td><td><span class="v" data-run="base" data-key="y_last">0.9999526</span></td></tr>
+<tr><td>Digital -3 dB frequency</td><td><span class="v" data-run="base" data-key="f_dig">0.1590225 Hz</span></td></tr>
+<tr><td>Shift from the target cutoff</td><td><span class="v" data-run="base" data-key="shift">-0.08320855 %</span></td></tr>
+</tbody>
+</table>
+<p>The coefficients are the exact fractions 1/21, 1/21 and -19/21, shown here as decimals. The gain is <span class="v" data-run="base" data-key="H_dc">1</span> at DC and <span class="v" data-run="base" data-key="H_ny">0</span> at the Nyquist frequency, as a low-pass should give. The digital -3 dB point is at <span class="v" data-run="base" data-key="f_dig">0.1590225 Hz</span> against a target of <span class="v" data-run="base" data-key="fc">0.1591549 Hz</span>, a shift of only <span class="v" data-run="base" data-key="shift">-0.08320855 %</span>, because the cutoff is far below fs/4.</p>
+</section>
+<section>
+<h2>When warping matters</h2>
+<p>Now take a cutoff of 2 Hz sampled at 8 Hz, so the cutoff is right at fs/4. The coefficients become b0 = <span class="v" data-run="fast" data-key="b0">0.4399008</span> and a1 = <span class="v" data-run="fast" data-key="a1">-0.1201983</span>, and the digital -3 dB point lands at <span class="v" data-run="fast" data-key="f_dig">1.695379 Hz</span> instead of 2 Hz, a shift of <span class="v" data-run="fast" data-key="shift">-15.231053 %</span>. The sheet warns that the cutoff is above fs/4.</p>
+<p>Tick the prewarp box for the same inputs and k becomes <span class="v" data-run="pre" data-key="k">1</span>, with b0 = <span class="v" data-run="pre" data-key="b0">0.5</span>. The digital -3 dB point is now at <span class="v" data-run="pre" data-key="f_dig">2 Hz</span>, on the target.</p>
+</section>
+<section>
+<h2>The checks it prints</h2>
+<p>Each check prints a PASS or FAIL line: the cutoff is below fs/2, a separate k = 1/20 case gives exactly 1/21 and -19/21, the DC gain is 1, the Nyquist gain is 0, the loop matches the closed form, and the magnitude at 2 atan(k) is 0.7071, which is -3 dB. A cutoff above fs/4 prints a warning, not a failure.</p>
+</section>
+<section>
+<h2>What this is, and is not</h2>
+<div class="note">
+<p><strong>This is a worked, self-checking example, not a design tool or a certified program.</strong> It covers one first-order low-pass. It covers no higher orders, no band-pass or high-pass forms and no fixed-point analysis. It is for learning and for checking ideas, not for safety-critical use. The problem follows the cookbook of the symplex library (MIT or Apache-2.0), rewritten for Calcs; the library is at github.com/cgorski/symplex.</p>
+</div>
+</section>
+<section>
+<h2>The sheet source</h2>
+<p>This is the sheet as it ships. The lines with a question mark are the inputs. It needs no Python.</p>
+<pre><code># From an analog low-pass to a digital filter: the bilinear transform
+
+A sensor signal usually needs smoothing before a controller or a logger sees it, and the smoothing is often designed as an analog RC low-pass and then run on a microcontroller. This sheet turns the first-order low-pass $H(s) = \omega_c/(s+\omega_c)$ into a two-tap difference equation with the bilinear (Tustin) transform, checks the DC and Nyquist gains, simulates the step response, and compares the digital and analog frequency responses so you can see how much the sampling distorts the frequency axis. Choose Input in the results bar, give it a cutoff in Hz and a sample rate in Hz, and it hands back the coefficients and a C update function.
+
+&gt;&gt; #rad
+&gt;&gt; #round 6
+
+## Inputs
+
+The base case is $\omega_c = 1$ rad/s (a cutoff of $1/2\pi$ Hz) sampled every 0.1 s (10 Hz).
+
+fc: ? 0.15915494 Hz [0.01 .. 4 step 0.001] | cutoff frequency
+fs: ? 10 Hz [2 .. 200 step 1] | sample rate
+prewarp: ? off | prewarp the analog cutoff so the digital filter is exactly -3 dB at fc
+
+## Analog prototype and the transform
+
+The analog cutoff and the sample time are
+
+wc: 2 * pi * fc -&gt; 1/s | cutoff in rad/s
+T: 1 / fs -&gt; s | sample time
+if fc &lt; fs / 2: &quot;PASS: the cutoff is below the Nyquist frequency fs/2.&quot; else: &quot;FAIL: the cutoff is not below fs/2, a digital filter cannot realise it.&quot;
+if fc &lt; fs / 4: &quot;PASS: the cutoff is below fs/4, so the frequency warping stays small.&quot; else: &quot;The cutoff is above fs/4: expect noticeable warping, consider prewarping.&quot;
+
+The bilinear transform replaces $s$ by $\frac{2}{T}\frac{z-1}{z+1}$. Writing $k = \omega_c T/2$:
+
+$$ H(z) = \frac{\omega_c}{\frac{2}{T}\frac{z-1}{z+1} + \omega_c} = \frac{k\,(z+1)}{(1+k)\,z + (k-1)} = \frac{b_0 z + b_1}{z + a_1} $$
+
+so that
+
+$$ b_0 = b_1 = \frac{k}{1+k}, \qquad a_1 = \frac{k-1}{k+1} $$
+
+With prewarping on, $\omega_c$ in the transform is replaced by $\frac{2}{T}\tan(\omega_c T/2)$, which moves the digital -3 dB point onto $f_c$ exactly (see the warping section).
+
+wc_a: (2 / T) * tan(wc * T / 2) -&gt; 1/s | prewarped cutoff, used only if the box is ticked
+wc_d: if(prewarp == 1; wc_a; wc) -&gt; 1/s | cutoff used in the transform
+k: wc_d * T / 2 | half of cutoff times sample time
+b0: k / (1 + k)
+b1: k / (1 + k)
+a1: (k - 1) / (k + 1)
+
+For the base case $k = 1/20$ and the exact fractions are $b_0 = b_1 = 1/21$ and $a_1 = -19/21$, which gives $H(z) = (z+1)/(21z - 19)$. As decimals:
+
+| Coefficient | Exact (base case) | Decimal |
+| --- | --- | --- |
+| b0 | 1/21 | 0.0476190 |
+| b1 | 1/21 | 0.0476190 |
+| a1 | -19/21 | -0.9047619 |
+
+The check below uses $k = 1/20$ on its own, not the inputs, so it holds whatever the sliders say:
+
+kb: 1 / 20 | base-case k
+b0b: kb / (1 + kb)
+a1b: (kb - 1) / (kb + 1)
+if abs(21 * b0b - 1) &lt; 0.000000001 and abs(21 * a1b + 19) &lt; 0.000000001: &quot;PASS: b0 = 1/21 and a1 = -19/21 for k = 1/20.&quot; else: &quot;FAIL: the base-case coefficients are not 1/21 and -19/21.&quot;
+
+## Gain checks
+
+A low-pass must pass DC unchanged and block the Nyquist frequency. $H(z)$ is evaluated at $z = 1$ (DC) and $z = -1$ (half the sample rate).
+
+H_z(z): (b0 * z + b1) / (z + a1) | digital transfer function
+H_dc: H_z(1) | gain at DC
+H_ny: H_z(-1) | gain at the Nyquist frequency
+if abs(H_dc - 1) &lt; 0.000000001: &quot;PASS: DC gain is 1.&quot; else: &quot;FAIL: DC gain is not 1.&quot;
+if abs(H_ny) &lt; 0.000000001: &quot;PASS: Nyquist gain is 0.&quot; else: &quot;FAIL: Nyquist gain is not 0.&quot;
+
+## Step response, 100 samples
+
+The difference equation is $y[n] = b_0 x[n] + b_1 x[n-1] - a_1 y[n-1]$. Feeding a unit step ($x = 1$ from $n = 0$, and $x[-1] = 0$) gives $y[0] = b_0$, and each sample then moves towards 1. Solving the recursion gives $y[n] = 1 - (1 - b_0)(-a_1)^n$, which is used below as an independent check of the loop.
+
+&gt;&gt; #hide
+&gt;&gt; x = vector(100)
+&gt;&gt; y = vector(100)
+&gt;&gt; e_max = 0
+&gt;&gt; #for n = 1 : 100
+&gt;&gt;   x.n = 1
+&gt;&gt; #loop
+&gt;&gt; y.1 = b0 * x.1
+&gt;&gt; #for n = 2 : 100
+&gt;&gt;   y.n = b0 * x.n + b1 * x.(n - 1) - a1 * y.(n - 1)
+&gt;&gt;   e_max = max(e_max; abs(y.n - (1 - (1 - b0) * (-a1)^(n - 1))))
+&gt;&gt; #loop
+&gt;&gt; #show
+
+y_first: y.1 | first sample, equals b0
+y_last: y.100 | sample n = 99
+e_closed: e_max | largest gap between the loop and the closed form
+if abs(y_first - b0) &lt; 0.000000001: &quot;PASS: the first sample is b0.&quot; else: &quot;FAIL: the first sample is not b0.&quot;
+if e_closed &lt; 0.000000001: &quot;PASS: the loop matches the closed-form step response.&quot; else: &quot;FAIL: the loop and the closed form disagree.&quot;
+if abs(y_last - 1) &lt; 0.001: &quot;PASS: after 100 samples the output is within 0.001 of the final value 1.&quot; else: &quot;The output has not yet settled to within 0.001 of 1 after 100 samples, so use a longer run.&quot;
+
+yf(n): y.(round(n) + 1) | the simulated sample n
+plot yf(x) as &quot;y[n]&quot; for x in 0..99
+
+## Frequency response and warping
+
+On the unit circle $z = e^{j\omega}$ with $\omega = 2\pi f/f_s$ rad/sample, the digital magnitude is $|H| = |b_0 e^{j\omega} + b_1| / |e^{j\omega} + a_1|$. The analog magnitude is $\omega_c/(\Omega^2 + \omega_c^2)^{1/2}$ with $\Omega = 2\pi f$. Both are in dB below, against frequency in Hz.
+
+fs_n: fs / (1 Hz) | sample rate as a number
+fc_n: fc / (1 Hz) | cutoff as a number
+wc_n: wc * (1 s) | analog cutoff in rad/s as a number
+Hd_dB(f): 10 * log(((b0 * cos(2 * pi * f / fs_n) + b1)^2 + (b0 * sin(2 * pi * f / fs_n))^2) / ((cos(2 * pi * f / fs_n) + a1)^2 + sin(2 * pi * f / fs_n)^2)) | digital response in dB
+Ha_dB(f): 10 * log(wc_n^2 / ((2 * pi * f)^2 + wc_n^2)) | analog response in dB
+
+The two curves over 90 % of the band up to $f_s/2$ (the digital curve plunges towards minus infinity at exactly $f_s/2$, so the plot stops short of it), then zoomed in around the cutoff. The horizontal axis is the frequency in Hz and the vertical axis is the gain in dB.
+
+plot Hd_dB(x) as &quot;digital&quot;, Ha_dB(x) as &quot;analog&quot; for x in 0.001..0.9 * fs_n / 2
+
+plot Hd_dB(x) as &quot;digital&quot;, Ha_dB(x) as &quot;analog&quot; for x in 0.001..4 * fc_n
+
+The digital filter has a true zero at Nyquist (an infinite number of dB below), while the analog one only reaches about $-20\log_{10}(\pi f_s/\omega_c)$ there. The reason is that the transform squeezes the whole analog frequency axis $0 \ldots \infty$ onto $0 \ldots f_s/2$ through
+
+$$ \Omega = \frac{2}{T}\tan\!\left(\frac{\omega T}{2}\right) $$
+
+so an analog frequency $\Omega$ lands at the digital frequency $\omega = 2\arctan(\Omega T/2)$. The digital -3 dB point is the image of $\omega_c$:
+
+w_dig: 2 * atan(k) | digital -3 dB frequency, rad/sample
+wd_rad_s: w_dig / T -&gt; 1/s | the same frequency in rad/s, equal to (2/T) atan(k)
+f_dig: wd_rad_s / (2 * pi) -&gt; Hz | the same in Hz
+shift: (f_dig - fc) / fc -&gt; % | shift of the digital cutoff from the target
+Hd_at_wd: sqrt(((b0 * cos(w_dig) + b1)^2 + (b0 * sin(w_dig))^2) / ((cos(w_dig) + a1)^2 + sin(w_dig)^2)) | digital magnitude at that frequency
+if abs(Hd_at_wd - 1 / sqrt(2)) &lt; 0.000001: &quot;PASS: the digital magnitude at 2 atan(k) is 0.7071, which is -3 dB.&quot; else: &quot;FAIL: the digital -3 dB point is not at 2 atan(k).&quot;
+
+For the base case, $\frac{2}{T}\arctan(0.05) = 20 \arctan(0.05) = 0.9992$ rad/s against the analog 1 rad/s (the sample-domain value is $0.09992$ rad/sample, and dividing by $T$ gives rad/s). That is a shift of $-0.08\%$: negligible when $f_c \ll f_s$ and growing quickly as $f_c$ approaches $f_s/2$. Tick the prewarp box, or reduce $f_s$ to 3 or 4 times $f_c$ to see both effects in the plots.
+
+## The filter as code
+
+The update equation, with the base-case numbers filled in ($b_0 = b_1 = 1/21$, $-a_1 = 19/21$):
+
+$$ y[n] = b_0 x[n] + b_1 x[n-1] - a_1 y[n-1] $$
+
+```c
+/* first-order low-pass, wc = 1 rad/s, fs = 10 Hz, bilinear transform */
+static float x_prev = 0.0f, y_prev = 0.0f;
+
+float lowpass_update(float x)
+{
+    float y = 0.047619048f * x            /* b0 = 1/21  */
+            + 0.047619048f * x_prev       /* b1 = 1/21  */
+            + 0.904761905f * y_prev;      /* -a1 = 19/21 */
+    x_prev = x;
+    y_prev = y;
+    return y;
+}
+```
+
+After a change of $f_c$ or $f_s$, replace the three constants with $b_0$, $b_1$ and $-a_1$ from the lines above. Two multiplies and two adds per sample, and no division at run time.
+
+## Explore
+
+- Slide $f_s$ down towards 4 times $f_c$ and watch the digital curve leave the analog one in the zoomed plot, with the shift line growing.
+- Tick prewarp: the shift becomes 0 and the digital curve crosses -3 dB exactly at $f_c$, at the price of a slightly different analog prototype.
+- Raise $f_c$ above $f_s/4$ and read the PASS and FAIL lines at the top.
+
+Follows the cookbook example signal_filter.rs of the symplex library (github.com/cgorski/symplex, MIT OR Apache-2.0).</code></pre>
+</section>
+<section>
+<h2>How to use it</h2>
+<ol>
+<li><strong>Open the template.</strong> Choose <strong>Open this template</strong> on this page. The sheet opens in a new tab of CivilKit Calcs, with the inputs set to the values used on this page.</li>
+<li><strong>Switch to Input mode.</strong> In the results bar choose <strong>Input</strong>. The input lines become boxes, lists, buttons and ticks.</li>
+<li><strong>Enter your values.</strong> Change the inputs to your own. The cutoff, the sample rate and the prewarp box are the three inputs. Every change recalculates the whole page.</li>
+<li><strong>Read and export the result.</strong> Read the results and the OK or not OK lines under them. Use <strong>Report</strong>, then Print PDF, Word or Excel, to keep the calculation with its workings.</li>
+</ol>
+</section>
+<section class="faq">
+<h2>Questions</h2>
+<h3>What is the bilinear transform?</h3>
+<p>A way to turn an analogue transfer function H(s) into a digital one H(z) by replacing s with (2/T)(z - 1)/(z + 1). It keeps a stable filter stable.</p>
+<h3>What is frequency prewarping?</h3>
+<p>The transform distorts the frequency axis through a tangent. Prewarping replaces the cutoff in the transform with (2/T) tan(wc T / 2), so the digital -3 dB point falls exactly on the cutoff you asked for.</p>
+<h3>Why is the Nyquist gain zero?</h3>
+<p>The transform maps infinite analogue frequency to z = -1, half the sample rate, where this filter has a zero.</p>
+<h3>Does the sheet need Python?</h3>
+<p>No. Everything is ordinary sheet calculation and a short loop.</p>
+<h3>Can I use the coefficients in a real product?</h3>
+<p>Use them to learn and to check your own derivation. The sheet is a worked example, not a certified program, and it is not meant for safety-critical use.</p>
+</section>
+<section class="related">
+<h2>Related pages</h2>
+<ul>
+<li><a href="/calcs/learn/simply-supported-beam-calculator/">Simply supported beam</a></li>
+<li><a href="/calcs/learn/engineering-calculation-software-free/">Free calculation software</a></li>
+<li><a href="/calcs/learn/engineering-calculations-with-units/">Calculations with units</a></li>
+<li><a href="/calcs/learn/">All calculators and guides</a></li>
+</ul>
+</section>
+<p class="cta"><a class="button" href="/calcs/?sample=cookbook-filter">Open this sheet in Calcs</a> <a class="button ghost" href="/calcs/">Open a blank sheet</a></p>
+</main>
+<footer class="site">
+<p><a href="https://civilkit.io/">CivilKit</a> · <a href="https://civilkit.io/calc/">CivilKit Calcs</a> · <a href="/calcs/learn/">Calculators and guides</a> · <a href="/calcs/guide/">User guide</a> · <a href="/calcs/whats-new/">What's new</a> · <a href="https://github.com/mageaustralia/civilkit-calcs">Source on GitHub</a></p>
+<p>CivilKit Calcs is free and open source (MIT licence). It runs in your browser: your calculations are not sent to a server. It is built on <a href="https://github.com/imartincei/CalcpadCE">CalcpadCE</a> by Nedelcho Ganchovski (Proektsoft) and contributors.</p>
+<p>Product names on this page belong to their owners. CivilKit Calcs is not affiliated with or endorsed by them.</p>
+</footer>
+</body>
+</html>

@@ -1,0 +1,229 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>RSA encryption worked example, step by step</title>
+<meta name="description" content="RSA step by step with a small key: primes, totient, private exponent, exact big integers, encrypt, decrypt, sign and break it. A teaching example, not secure.">
+<meta name="robots" content="index, follow, max-image-preview:large">
+<meta name="color-scheme" content="light dark">
+<link rel="canonical" href="https://civilkit.io/calcs/learn/rsa-encryption-worked-example/">
+<link rel="stylesheet" href="/calcs/learn/learn.css">
+<link rel="icon" href="/calcs/icon-192.png" sizes="192x192">
+<meta property="og:type" content="website">
+<meta property="og:site_name" content="CivilKit Calcs">
+<meta property="og:title" content="RSA encryption worked example, step by step">
+<meta property="og:description" content="RSA step by step with a small key: primes, totient, private exponent, exact big integers, encrypt, decrypt, sign and break it. A teaching example, not secure.">
+<meta property="og:url" content="https://civilkit.io/calcs/learn/rsa-encryption-worked-example/">
+<meta property="og:image" content="https://civilkit.io/calcs/icon-512.png">
+<meta name="twitter:card" content="summary">
+<meta name="twitter:title" content="RSA encryption worked example, step by step">
+<meta name="twitter:description" content="RSA step by step with a small key: primes, totient, private exponent, exact big integers, encrypt, decrypt, sign and break it. A teaching example, not secure.">
+<meta name="twitter:image" content="https://civilkit.io/calcs/icon-512.png">
+<script type="application/ld+json">
+{
+ "@context": "https://schema.org",
+ "@graph": [
+  {
+   "@type": "BreadcrumbList",
+   "itemListElement": [
+    {
+     "@type": "ListItem",
+     "position": 1,
+     "name": "CivilKit",
+     "item": "https://civilkit.io/"
+    },
+    {
+     "@type": "ListItem",
+     "position": 2,
+     "name": "Calcs",
+     "item": "https://civilkit.io/calc/"
+    },
+    {
+     "@type": "ListItem",
+     "position": 3,
+     "name": "Calculators and guides",
+     "item": "https://civilkit.io/calcs/learn/"
+    },
+    {
+     "@type": "ListItem",
+     "position": 4,
+     "name": "RSA worked example",
+     "item": "https://civilkit.io/calcs/learn/rsa-encryption-worked-example/"
+    }
+   ]
+  },
+  {
+   "@type": "HowTo",
+   "name": "How to follow a worked RSA example in a calculation sheet",
+   "description": "RSA step by step with a small key: primes, totient, private exponent, exact big integers, encrypt, decrypt, sign and break it. A teaching example, not secure.",
+   "step": [
+    {
+     "@type": "HowToStep",
+     "position": 1,
+     "name": "Open the sheet",
+     "text": "Choose Open this sheet in Calcs on this page. The sheet opens in a new tab of CivilKit Calcs."
+    },
+    {
+     "@type": "HowToStep",
+     "position": 2,
+     "name": "Allow Python",
+     "text": "The app asks permission to run the Python blocks once for each tab. Allow it to see the results."
+    },
+    {
+     "@type": "HowToStep",
+     "position": 3,
+     "name": "Read the PASS lines",
+     "text": "Scroll down each section and read what it checks, then edit a value in a block and run it again."
+    }
+   ]
+  },
+  {
+   "@type": "FAQPage",
+   "mainEntity": [
+    {
+     "@type": "Question",
+     "name": "Is this RSA example secure?",
+     "acceptedAnswer": {
+      "@type": "Answer",
+      "text": "No. The key is 61 bits long where real keys are 2048 bits or more, there is no padding and the message is a bare number. The sheet breaks its own key in its last section."
+     }
+    },
+    {
+     "@type": "Question",
+     "name": "How is the private exponent found?",
+     "acceptedAnswer": {
+      "@type": "Answer",
+      "text": "With the extended Euclidean algorithm. It gives integers x and y with e x + totient y equal to the gcd. When the gcd is 1, x reduced modulo the totient is the private exponent."
+     }
+    },
+    {
+     "@type": "Question",
+     "name": "Why use exact big integers?",
+     "acceptedAnswer": {
+      "@type": "Answer",
+      "text": "The numbers involved have far more digits than a floating point value can hold. Python integers are exact, so every remainder is correct and the checks mean something."
+     }
+    },
+    {
+     "@type": "Question",
+     "name": "Why does the sheet need Python?",
+     "acceptedAnswer": {
+      "@type": "Answer",
+      "text": "All the RSA arithmetic is written in Python blocks. The app asks permission to run them once for each tab."
+     }
+    },
+    {
+     "@type": "Question",
+     "name": "What does the 3-argument pow do here?",
+     "acceptedAnswer": {
+      "@type": "Answer",
+      "text": "It is used only to cross-check the sheet's own square and multiply routine, which does the same job step by step so you can see how few multiplications a large exponent needs."
+     }
+    }
+   ]
+  }
+ ]
+}
+</script>
+</head>
+<body>
+<a class="skip" href="#main">Skip to the content</a>
+<header class="site">
+<a class="brand" href="https://civilkit.io/calc/">CivilKit Calcs</a>
+<nav aria-label="Site">
+<a href="https://civilkit.io/calc/">Calcs home</a>
+<a href="/calcs/learn/">Calculators and guides</a>
+<a href="/calcs/guide/">User guide</a>
+<a href="/calcs/whats-new/">What's new</a>
+<a href="/calcs/">Open Calcs</a>
+</nav>
+</header>
+<main id="main">
+<nav class="crumbs" aria-label="Breadcrumb"><a href="https://civilkit.io/">CivilKit</a> / <a href="https://civilkit.io/calc/">Calcs</a> / <a href="/calcs/learn/">Calculators and guides</a> / <span>RSA worked example</span></nav>
+<h1>RSA encryption worked example with a small key</h1>
+<div class="lead">
+<p>This sheet builds a complete toy RSA key pair and uses it. It finds two primes, forms the modulus and the totient, works out the private exponent, then encrypts, decrypts, signs and verifies a message, and finally breaks its own key to show why a small modulus is useless. Everything is whole-number arithmetic with remainders, done with exact big integers, so no digit is rounded away.</p>
+<p><strong>It is for learning, not for security.</strong> The key is 61 bits long where real keys are 2048 bits or more, there is no padding, and the message is a bare number. Never use it to protect anything.</p>
+</div>
+<p class="cta"><a class="button" href="/calcs/?sample=cookbook-rsa">Open this sheet in Calcs</a> <a class="button ghost" href="/calcs/">Open a blank sheet</a></p>
+<section>
+<h2>The idea in one paragraph</h2>
+<p>Work with remainders modulo n = p q, where p and q are secret primes. For a message m with no common factor with n, Euler's theorem says m raised to the totient is 1 modulo n, where the totient is (p - 1)(q - 1). Choose a public exponent e and a private exponent d so that e d leaves remainder 1 when divided by the totient. Then raising to e and then to d returns the message. Anyone can lock with (e, n). Only the holder of d can unlock, because finding d from n and e needs the factors of n.</p>
+</section>
+<figure class="video">
+<video controls preload="none" width="960" height="540" aria-label="Your first calculation" src="/calcs/guide/videos/01-first-calculation.mp4"></video>
+<figcaption>Video: Your first calculation (about 85 seconds). Read the chapter <a href="/calcs/guide/getting-started/first-sheet">Your first sheet in five minutes</a>.</figcaption>
+</figure>
+<section class="try" id="try-it">
+<h2>Try it</h2>
+<iframe class="embed" src="/calcs/?embed=1&amp;sample=cookbook-rsa" width="100%" height="560" loading="lazy" title="RSA worked example: live sheet" sandbox="allow-scripts allow-same-origin allow-popups allow-popups-to-escape-sandbox"></iframe>
+<p class="fallback"><a href="/calcs/?sample=cookbook-rsa">Open the sheet in Calcs</a> or <a href="/calcs/embed/">embed it</a>.</p>
+</section>
+<section>
+<h2>What the sheet does, section by section</h2>
+<ol>
+<li><strong>Primes.</strong> A Miller-Rabin test written in Python checks that the two chosen numbers are prime. With the first twelve primes as bases it is deterministic for numbers of this size. A helper called <code>modpow</code> does square and multiply, so the exponent costs one squaring per bit.</li>
+<li><strong>The key pair.</strong> The modulus n = p q, the totient (p - 1)(q - 1), the usual public exponent e = 65537, and the private exponent found with the extended Euclidean algorithm. The sheet checks that the gcd is 1 and that e d has remainder 1 modulo the totient.</li>
+<li><strong>Encrypt and decrypt.</strong> The ciphertext is m^e mod n and decryption is c^d mod n. A check confirms the round trip.</li>
+<li><strong>More messages.</strong> A table of messages, including 0, 1 and the largest allowed value, and a plot showing that consecutive messages encrypt to unrelated numbers.</li>
+<li><strong>A signature.</strong> The same operation turned around: raise a fingerprint to the private exponent, then undo it with the public exponent. A changed document or a tampered signature fails.</li>
+<li><strong>Why the toy is a toy.</strong> Pollard's rho method factors the modulus, rebuilds the private exponent and reads the message.</li>
+</ol>
+</section>
+<section>
+<h2>Which results come from where</h2>
+<p>All the arithmetic on this page runs in Python blocks inside the sheet, so this page quotes no computed numbers. The sheet's own calculation lines, at the end, only collect two values that the Python blocks export: the count of failed checks and the number of Pollard rho steps needed to break the key. The sheet prints a single line saying whether all the RSA checks passed.</p>
+<p>The Python needs your permission. When you open the sheet the app asks before it runs the code, once for each tab. The blocks share one session, and each has a time limit of 10 seconds.</p>
+</section>
+<section>
+<h2>The PASS and FAIL lines</h2>
+<p>Every step ends with checks that print PASS or FAIL. They include: both primes pass the test, e and the totient share no factor, e d has remainder 1 modulo the totient, Fermat's and Euler's theorems hold for the chosen numbers, the round trip recovers the message, every test message round-trips, the signature verifies while a changed document and a tampered signature do not, and the factors found by Pollard's rho are exactly p and q. If any line says FAIL the result line at the bottom says so too.</p>
+</section>
+<section>
+<h2>What this is, and is not</h2>
+<div class="note">
+<p><strong>This is a worked, self-checking example. It is for learning and checking ideas, not for security.</strong> Textbook RSA with a tiny key is not secure. There is no padding, no hashing of the document before signing, and the primes are chosen as the next prime after a fixed starting number rather than at random. It is not a design tool and not a certified program.</p>
+<p>The problems follow the cookbook of the symplex library (MIT or Apache-2.0), rewritten for Calcs. The library is at <a href="https://github.com/cgorski/symplex">github.com/cgorski/symplex</a>.</p>
+</div>
+</section>
+<section>
+<h2>Things to change</h2>
+<ul>
+<li>Start from larger primes, for example from ten billion, and watch the break take longer. Its cost grows with the square root of the smaller prime.</li>
+<li>Set <code>e = 3</code> in the key section. The gcd check fails and the inverse raises an error, because 3 divides p - 1, so there is no inverse modulo the totient.</li>
+<li>Encrypt a message larger than n. It comes back reduced modulo n, not as you sent it.</li>
+<li>Sign a different fingerprint, or change the signature by one, and watch verification fail.</li>
+</ul>
+</section>
+<section class="faq">
+<h2>Questions</h2>
+<h3>Is this RSA example secure?</h3>
+<p>No. The key is 61 bits long where real keys are 2048 bits or more, there is no padding and the message is a bare number. The sheet breaks its own key in its last section.</p>
+<h3>How is the private exponent found?</h3>
+<p>With the extended Euclidean algorithm. It gives integers x and y with e x + totient y equal to the gcd. When the gcd is 1, x reduced modulo the totient is the private exponent.</p>
+<h3>Why use exact big integers?</h3>
+<p>The numbers involved have far more digits than a floating point value can hold. Python integers are exact, so every remainder is correct and the checks mean something.</p>
+<h3>Why does the sheet need Python?</h3>
+<p>All the RSA arithmetic is written in Python blocks. The app asks permission to run them once for each tab.</p>
+<h3>What does the 3-argument pow do here?</h3>
+<p>It is used only to cross-check the sheet's own square and multiply routine, which does the same job step by step so you can see how few multiplications a large exponent needs.</p>
+</section>
+<section class="related">
+<h2>Related pages</h2>
+<ul>
+<li><a href="/calcs/learn/engineering-calculations-with-units/">Calculations with units</a></li>
+<li><a href="/calcs/learn/engineering-calculation-software-free/">Free calculation software</a></li>
+<li><a href="/calcs/learn/calcpad-online/">Calcpad worksheets in the browser</a></li>
+<li><a href="/calcs/learn/">All calculators and guides</a></li>
+</ul>
+</section>
+<p class="cta"><a class="button" href="/calcs/?sample=cookbook-rsa">Open this sheet in Calcs</a> <a class="button ghost" href="/calcs/">Open a blank sheet</a></p>
+</main>
+<footer class="site">
+<p><a href="https://civilkit.io/">CivilKit</a> · <a href="https://civilkit.io/calc/">CivilKit Calcs</a> · <a href="/calcs/learn/">Calculators and guides</a> · <a href="/calcs/guide/">User guide</a> · <a href="/calcs/whats-new/">What's new</a> · <a href="https://github.com/mageaustralia/civilkit-calcs">Source on GitHub</a></p>
+<p>CivilKit Calcs is free and open source (MIT licence). It runs in your browser: your calculations are not sent to a server. It is built on <a href="https://github.com/imartincei/CalcpadCE">CalcpadCE</a> by Nedelcho Ganchovski (Proektsoft) and contributors.</p>
+<p>Product names on this page belong to their owners. CivilKit Calcs is not affiliated with or endorsed by them.</p>
+</footer>
+</body>
+</html>

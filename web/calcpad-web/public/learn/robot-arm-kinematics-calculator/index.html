@@ -1,0 +1,273 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Robot arm kinematics calculator, three joints</title>
+<meta name="description" content="Worked example of forward and inverse kinematics for a three-joint planar robot arm: Jacobian, singularities, workspace and damped least squares, with units.">
+<meta name="robots" content="index, follow, max-image-preview:large">
+<meta name="color-scheme" content="light dark">
+<link rel="canonical" href="https://civilkit.io/calcs/learn/robot-arm-kinematics-calculator/">
+<link rel="stylesheet" href="/calcs/learn/learn.css">
+<link rel="icon" href="/calcs/icon-192.png" sizes="192x192">
+<meta property="og:type" content="website">
+<meta property="og:site_name" content="CivilKit Calcs">
+<meta property="og:title" content="Robot arm kinematics calculator, three joints">
+<meta property="og:description" content="Worked example of forward and inverse kinematics for a three-joint planar robot arm: Jacobian, singularities, workspace and damped least squares, with units.">
+<meta property="og:url" content="https://civilkit.io/calcs/learn/robot-arm-kinematics-calculator/">
+<meta property="og:image" content="https://civilkit.io/calcs/icon-512.png">
+<meta name="twitter:card" content="summary">
+<meta name="twitter:title" content="Robot arm kinematics calculator, three joints">
+<meta name="twitter:description" content="Worked example of forward and inverse kinematics for a three-joint planar robot arm: Jacobian, singularities, workspace and damped least squares, with units.">
+<meta name="twitter:image" content="https://civilkit.io/calcs/icon-512.png">
+<script type="application/ld+json">
+{
+ "@context": "https://schema.org",
+ "@graph": [
+  {
+   "@type": "BreadcrumbList",
+   "itemListElement": [
+    {
+     "@type": "ListItem",
+     "position": 1,
+     "name": "CivilKit",
+     "item": "https://civilkit.io/"
+    },
+    {
+     "@type": "ListItem",
+     "position": 2,
+     "name": "Calcs",
+     "item": "https://civilkit.io/calc/"
+    },
+    {
+     "@type": "ListItem",
+     "position": 3,
+     "name": "Calculators and guides",
+     "item": "https://civilkit.io/calcs/learn/"
+    },
+    {
+     "@type": "ListItem",
+     "position": 4,
+     "name": "Robot arm kinematics",
+     "item": "https://civilkit.io/calcs/learn/robot-arm-kinematics-calculator/"
+    }
+   ]
+  },
+  {
+   "@type": "HowTo",
+   "name": "How to work through forward and inverse kinematics of a three-joint planar arm",
+   "description": "Worked example of forward and inverse kinematics for a three-joint planar robot arm: Jacobian, singularities, workspace and damped least squares, with units.",
+   "step": [
+    {
+     "@type": "HowToStep",
+     "position": 1,
+     "name": "Open the template",
+     "text": "Choose Open this template on this page. The sheet opens in a new tab of CivilKit Calcs, with the inputs set to the values used on this page."
+    },
+    {
+     "@type": "HowToStep",
+     "position": 2,
+     "name": "Switch to Input mode",
+     "text": "In the results bar choose Input. The input lines become boxes, lists, buttons and ticks."
+    },
+    {
+     "@type": "HowToStep",
+     "position": 3,
+     "name": "Enter your values",
+     "text": "Change the inputs to your own. The link lengths, the base joint angles and the target point and tool angle are the values to change. Every change recalculates the whole page."
+    },
+    {
+     "@type": "HowToStep",
+     "position": 4,
+     "name": "Read and export the result",
+     "text": "Read the results and the OK or not OK lines under them. Use Report, then Print PDF, Word or Excel, to keep the calculation with its workings."
+    }
+   ]
+  },
+  {
+   "@type": "FAQPage",
+   "mainEntity": [
+    {
+     "@type": "Question",
+     "name": "Does the sheet need Python?",
+     "acceptedAnswer": {
+      "@type": "Answer",
+      "text": "The forward kinematics, the Jacobian, the manipulability and the two-link inverse kinematics are sheet maths. The damped least squares iteration, the workspace plot and the sliders are Python blocks, which the app asks permission to run once per tab."
+     }
+    },
+    {
+     "@type": "Question",
+     "name": "Are the angles in degrees or radians?",
+     "acceptedAnswer": {
+      "@type": "Answer",
+      "text": "Radians. The engine defaults to degrees for trigonometric functions, so the sheet switches to radians at the top, and the base angles of 0.5, 0.3 and 0.1 are radians."
+     }
+    },
+    {
+     "@type": "Question",
+     "name": "What is a singularity of the arm?",
+     "acceptedAnswer": {
+      "@type": "Answer",
+      "text": "A configuration where the Jacobian loses rank and the tip cannot move in some direction. For this arm that is when every link lies on one line, stretched out or folded back, which is where the manipulability is zero."
+     }
+    },
+    {
+     "@type": "Question",
+     "name": "Why are there two inverse kinematics solutions?",
+     "acceptedAnswer": {
+      "@type": "Answer",
+      "text": "The elbow can be up or down for the same target. The sheet computes both and checks that each puts the tip on the target."
+     }
+    },
+    {
+     "@type": "Question",
+     "name": "Can I use it to drive a real robot?",
+     "acceptedAnswer": {
+      "@type": "Answer",
+      "text": "No. It is for learning and checking ideas, not for safety-critical use."
+     }
+    }
+   ]
+  }
+ ]
+}
+</script>
+</head>
+<body>
+<a class="skip" href="#main">Skip to the content</a>
+<header class="site">
+<a class="brand" href="https://civilkit.io/calc/">CivilKit Calcs</a>
+<nav aria-label="Site">
+<a href="https://civilkit.io/calc/">Calcs home</a>
+<a href="/calcs/learn/">Calculators and guides</a>
+<a href="/calcs/guide/">User guide</a>
+<a href="/calcs/whats-new/">What's new</a>
+<a href="/calcs/">Open Calcs</a>
+</nav>
+</header>
+<main id="main">
+<nav class="crumbs" aria-label="Breadcrumb"><a href="https://civilkit.io/">CivilKit</a> / <a href="https://civilkit.io/calc/">Calcs</a> / <a href="/calcs/learn/">Calculators and guides</a> / <span>Robot arm kinematics</span></nav>
+<h1>Robot arm kinematics calculator</h1>
+<div class="lead">
+<p>This is a worked example of the kinematics of a planar robot arm with three revolute joints: where the tool tip is for given joint angles (forward kinematics), how tip speed follows joint speed (the Jacobian), where the arm loses a direction of motion (singularities), and which angles reach a wanted point (inverse kinematics). It opens as a live sheet in CivilKit Calcs, and every formula is checked numerically in the sheet itself.</p>
+</div>
+<p class="cta"><a class="button" href="/calcs/?sample=cookbook-robot">Open this sheet in Calcs</a> <a class="button ghost" href="/calcs/">Open a blank sheet</a></p>
+<section>
+<h2>The arm</h2>
+<p>The links are 0.30 m, 0.25 m and 0.20 m long, so the arm stretched out reaches <span class="v" data-run="base" data-key="reach">0.75 m</span>. All joints turn about the axis out of the page. The sheet sets angles to radians, so the base configuration of 0.5, 0.3 and 0.1 rad is about 29, 17 and 6 degrees. For a planar arm the Denavit-Hartenberg offset and twist are zero, so only each joint angle and link length matter.</p>
+</section>
+<figure class="video">
+<video controls preload="none" width="960" height="540" aria-label="Your first calculation" src="/calcs/guide/videos/01-first-calculation.mp4"></video>
+<figcaption>Video: Your first calculation (about 85 seconds). Read the chapter <a href="/calcs/guide/getting-started/first-sheet">Your first sheet in five minutes</a>.</figcaption>
+</figure>
+<section class="try" id="try-it">
+<h2>Try it</h2>
+<iframe class="embed" src="/calcs/?embed=1&amp;sample=cookbook-robot" width="100%" height="560" loading="lazy" title="Robot arm kinematics: live sheet" sandbox="allow-scripts allow-same-origin allow-popups allow-popups-to-escape-sandbox"></iframe>
+<p class="fallback"><a href="/calcs/?sample=cookbook-robot">Open the sheet in Calcs</a> or <a href="/calcs/embed/">embed it</a>.</p>
+</section>
+<section>
+<h2>Forward kinematics</h2>
+<p>The tip is the sum of three vectors, each turned by the sum of the joint angles up to it: x = L1 cos t1 + L2 cos(t1 + t2) + L3 cos(t1 + t2 + t3), and the same with sines for y. The tool points at t1 + t2 + t3. At the base configuration the engine gives:</p>
+<table>
+<thead><tr><th>Quantity</th><th>Result</th></tr></thead>
+<tbody>
+<tr><td>Tool angle (rad)</td><td><span class="v" data-run="base" data-key="phi_tool">0.9</span></td></tr>
+<tr><td>Distance of the tip from the base</td><td><span class="v" data-run="base" data-key="dist">0.739 m</span></td></tr>
+</tbody>
+</table>
+<p>The sheet prints a PASS line when that distance is within the reach.</p>
+</section>
+<section>
+<h2>The Jacobian</h2>
+<p>Differentiating the tip position with respect to each joint angle gives a 2 by 3 matrix mapping joint speeds to tip velocity. The sheet writes its six entries from the formulas, then checks them against central finite differences of the forward kinematics, and prints a PASS line if no entry differs by 1e-8 m or more. That check uses no derivative formula, so it can catch a sign error. The first row at the base configuration:</p>
+<table>
+<thead><tr><th>Quantity</th><th>Result</th></tr></thead>
+<tbody>
+<tr><td>J11 (m per rad)</td><td><span class="v" data-run="base" data-key="J11">-0.48 m</span></td></tr>
+<tr><td>J12</td><td><span class="v" data-run="base" data-key="J12">-0.336 m</span></td></tr>
+<tr><td>J13</td><td><span class="v" data-run="base" data-key="J13">-0.157 m</span></td></tr>
+</tbody>
+</table>
+</section>
+<section>
+<h2>Manipulability and singularities</h2>
+<p>The manipulability w is the square root of the determinant of J times its transpose. It is zero when the arm has lost a direction. The sheet derives a closed form from the 2 by 2 minors of J, which shows that w does not depend on the first joint angle and vanishes only when every link lies on one line, stretched out or folded back.</p>
+<table>
+<thead><tr><th>Quantity</th><th>Result</th></tr></thead>
+<tbody>
+<tr><td>w at the base configuration</td><td><span class="v" data-run="base" data-key="w_closed">0.0539 m²</span></td></tr>
+<tr><td>w stretched out</td><td><span class="v" data-run="base" data-key="w_ext">0 m²</span></td></tr>
+<tr><td>w, elbow at a right angle, wrist bent back</td><td><span class="v" data-run="base" data-key="w_bent">0.103 m²</span></td></tr>
+</tbody>
+</table>
+<p>PASS lines check that the closed form equals the matrix value and that w is zero at the singular configurations. A plot shows w against the elbow angle.</p>
+</section>
+<section>
+<h2>Inverse kinematics</h2>
+<p>For links 1 and 2, a reachable target gives the elbow angle from the law of cosines and the first angle from two arctangents. The sign of the elbow angle is the choice of elbow: positive is elbow down, negative elbow up. The sheet builds a target from the tip at 0.5 and 0.3 rad and solves it back:</p>
+<table>
+<thead><tr><th>Quantity</th><th>Result</th></tr></thead>
+<tbody>
+<tr><td>Target x</td><td><span class="v" data-run="base" data-key="x_t">0.437 m</span></td></tr>
+<tr><td>Target y</td><td><span class="v" data-run="base" data-key="y_t">0.323 m</span></td></tr>
+<tr><td>Elbow down, joint 1 (rad)</td><td><span class="v" data-run="base" data-key="q1_dn">0.5</span></td></tr>
+<tr><td>Elbow down, joint 2 (rad)</td><td><span class="v" data-run="base" data-key="q2_dn">0.3</span></td></tr>
+<tr><td>Elbow up, joint 1 (rad)</td><td><span class="v" data-run="base" data-key="q1_up">0.773</span></td></tr>
+<tr><td>Elbow up, joint 2 (rad)</td><td><span class="v" data-run="base" data-key="q2_up">-0.3</span></td></tr>
+</tbody>
+</table>
+<p>PASS lines check that both solutions land on the target and that elbow down returns the original angles.</p>
+</section>
+<section>
+<h2>Three joints, workspace and sliders</h2>
+<p>Three joints need a target point and a tool angle. A controller iterates with damped least squares, which stays well behaved near singularities. That iteration, a workspace plot coloured by manipulability, and a set of three joint sliders are Python blocks in the sheet. They need Python, which the app asks permission to run once per tab, so this page quotes no number from them. The sheet checks the iteration against its own forward kinematics and against the closed form, whose wrist point for the target (0.45, 0.30) m at 1.0 rad is:</p>
+<table>
+<thead><tr><th>Quantity</th><th>Result</th></tr></thead>
+<tbody>
+<tr><td>Wrist point x</td><td><span class="v" data-run="base" data-key="x_w">0.342 m</span></td></tr>
+<tr><td>Wrist point y</td><td><span class="v" data-run="base" data-key="y_w">0.132 m</span></td></tr>
+</tbody>
+</table>
+</section>
+<section>
+<h2>Try the singular configuration</h2>
+<p>Setting the second and third angles to zero stretches the arm out. The engine then gives a tip distance of <span class="v" data-run="stretched" data-key="dist">0.75 m</span> and a manipulability of <span class="v" data-run="stretched" data-key="w_closed">0 m²</span>, and the sheet's regularity check prints FAIL, as it should.</p>
+</section>
+<section>
+<h2>What this is, and is not</h2>
+<div class="note">
+<p><strong>This is a worked, self-checking example, not a design tool or a certified program.</strong> It prints PASS and FAIL lines for its own checks. It covers a planar arm only, with no dynamics and no collision checks. It is for learning and checking ideas, not for safety-critical use, and you should not run a real robot from it.</p>
+<p>The problems follow the cookbook of the symplex library (MIT or Apache-2.0), rewritten for Calcs. Its public repository is github.com/cgorski/symplex.</p>
+</div>
+</section>
+<section class="faq">
+<h2>Questions</h2>
+<h3>Does the sheet need Python?</h3>
+<p>The forward kinematics, the Jacobian, the manipulability and the two-link inverse kinematics are sheet maths. The damped least squares iteration, the workspace plot and the sliders are Python blocks, which the app asks permission to run once per tab.</p>
+<h3>Are the angles in degrees or radians?</h3>
+<p>Radians. The engine defaults to degrees for trigonometric functions, so the sheet switches to radians at the top, and the base angles of 0.5, 0.3 and 0.1 are radians.</p>
+<h3>What is a singularity of the arm?</h3>
+<p>A configuration where the Jacobian loses rank and the tip cannot move in some direction. For this arm that is when every link lies on one line, stretched out or folded back, which is where the manipulability is zero.</p>
+<h3>Why are there two inverse kinematics solutions?</h3>
+<p>The elbow can be up or down for the same target. The sheet computes both and checks that each puts the tip on the target.</p>
+<h3>Can I use it to drive a real robot?</h3>
+<p>No. It is for learning and checking ideas, not for safety-critical use.</p>
+</section>
+<section class="related">
+<h2>Related pages</h2>
+<ul>
+<li><a href="/calcs/learn/engineering-calculations-with-units/">Calculations with units</a></li>
+<li><a href="/calcs/learn/engineering-calculation-software-free/">Free calculation software</a></li>
+<li><a href="/calcs/learn/export-calculations-to-word-excel-pdf/">Export to Word, Excel and PDF</a></li>
+<li><a href="/calcs/learn/">All calculators and guides</a></li>
+</ul>
+</section>
+<p class="cta"><a class="button" href="/calcs/?sample=cookbook-robot">Open this sheet in Calcs</a> <a class="button ghost" href="/calcs/">Open a blank sheet</a></p>
+</main>
+<footer class="site">
+<p><a href="https://civilkit.io/">CivilKit</a> · <a href="https://civilkit.io/calc/">CivilKit Calcs</a> · <a href="/calcs/learn/">Calculators and guides</a> · <a href="/calcs/guide/">User guide</a> · <a href="/calcs/whats-new/">What's new</a> · <a href="https://github.com/mageaustralia/civilkit-calcs">Source on GitHub</a></p>
+<p>CivilKit Calcs is free and open source (MIT licence). It runs in your browser: your calculations are not sent to a server. It is built on <a href="https://github.com/imartincei/CalcpadCE">CalcpadCE</a> by Nedelcho Ganchovski (Proektsoft) and contributors.</p>
+<p>Product names on this page belong to their owners. CivilKit Calcs is not affiliated with or endorsed by them.</p>
+</footer>
+</body>
+</html>
