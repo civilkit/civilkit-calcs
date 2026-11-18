@@ -121,9 +121,11 @@ export function inputValue(c, raw) {
         return { error: `a choice of ${c.keys.map((k, i) => `"${k}" (${c.values[i]})`).join(', ')}; give the name of an option or its value.` };
     }
     if (c.kind === 'other') return { error: 'this kind of input cannot be set by this server.' };
+    // A number with a unit ("8000 N/m", "5000 mm"): the engine converts it to the unit of the default and refuses another dimension.
+    if (typeof raw === 'string' && /^\s*[+-]?(\d+\.?\d*|\.\d+)([eE][+-]?\d+)?\s*(?![eE][+-]?\d)[A-Za-z\u00B0\u00B5\u03BC\u03A9%][A-Za-z0-9\u00B0\u00B5\u03BC\u03A9%_*/^()\u00B7\u2219\u22C5\u2215-]{0,40}\s*$/.test(raw)) return { value: raw.trim().replace(/\s+/g, ' ') };
     const n = typeof raw === 'number' ? raw : typeof raw === 'string' && /^\s*[+-]?(\d+\.?\d*|\.\d+)([eE][+-]?\d+)?\s*$/.test(raw) ? Number(raw) : NaN;
     if (!Number.isFinite(n)) {
-        return { error: `a number in the unit of its default (${c.def}), for example ${typeof raw === 'string' ? (Number.parseFloat(raw) || 1) : 1}; units are not written.` };
+        return { error: `a number in the unit of its default (${c.def}), for example ${typeof raw === 'string' ? (Number.parseFloat(raw) || 1) : 1}; or a number with a unit, such as 8 m, which is converted to that unit.` };
     }
     // The engine reads a plain decimal; no exponent.
     const text = Math.abs(n) >= 1e-6 && Math.abs(n) < 1e15 ? String(Number(n.toPrecision(15))) : n === 0 ? '0' : n.toFixed(20).replace(/0+$/, '').replace(/\.$/, '');

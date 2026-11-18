@@ -71,9 +71,17 @@ test('template inputs: defaults, and overrides by the sheet name with or without
     assert.equal(q(longer, 'L').value, 8);
     assert.ok(q(longer, 'M_max').value > q(base, 'M_max').value);
     near(q(evaluator.evaluate({ source: src, inputs: { L: '8' } }), 'M_max').value, q(longer, 'M_max').value, 1e-12);
-    const withUnit = evaluator.evaluate({ source: src, inputs: { L: '8 m' } });
-    assert.equal(withUnit.ran, false);
-    assert.match(withUnit.errors[0].message, /Input "L": a number in the unit of its default \(6m\)/);
+    // A value with a unit is converted to the unit of the default; a unit of another dimension is refused on the line.
+    const withUnit = evaluator.evaluate({ source: src, inputs: { L: '8000 mm' } });
+    assert.equal(withUnit.ok, true, JSON.stringify(withUnit.errors));
+    near(q(withUnit, 'L').value, 8, 1e-9);
+    near(q(withUnit, 'M_max').value, q(longer, 'M_max').value, 1e-9);
+    const clash = evaluator.evaluate({ source: src, inputs: { L: '8 kN' } });
+    assert.equal(clash.ok, false);
+    assert.match(JSON.stringify(clash.errors), /inconsistent with the target units/);
+    const notANumber = evaluator.evaluate({ source: src, inputs: { L: 'wide' } });
+    assert.equal(notANumber.ran, false);
+    assert.match(notANumber.errors[0].message, /Input "L": a number in the unit of its default \(6m\)/);
     // Choices by the option's name or value, a checkbox by true/false.
     const timber = evaluator.evaluate({ source: src, inputs: { mat: 'Timber', h: '400 mm deep', sw: false, limit: 'L/500' } });
     assert.equal(timber.ok, true, JSON.stringify(timber.errors));

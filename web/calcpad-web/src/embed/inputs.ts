@@ -117,6 +117,9 @@ export function promoteNumberLines(sheet: string): string {
     }).join('\n');
 }
 
+/** A number followed by a unit: `5000 mm`, `8000 N/m`, `1.2e3 kN*m`. */
+const NUMBER_WITH_UNIT = /^[-+]?(?:\d+\.?\d*|\.\d+)(?:[eE][-+]?\d+)?\s*(?![eE][-+]?\d)[A-Za-z\u00B0\u00B5\u03BC\u03A9%][A-Za-z0-9\u00B0\u00B5\u03BC\u03A9%_*/^()\u00B7\u2219\u22C5\u2215-]{0,40}$/;
+
 export type Checked = { ok: true; value: string } | { ok: false; error: string };
 
 /**
@@ -125,6 +128,9 @@ export type Checked = { ok: true; value: string } | { ok: false; error: string }
  */
 export function checkValue(input: EmbedInput, raw: unknown): Checked {
     if (input.kind === 'number') {
+        // A number with a unit ("8000 N/m", "5000 mm"): the engine converts it to the unit the input declares and refuses another
+        // dimension (a clash comes back in the results' errors), so only its shape is checked here and the slider bounds are the engine's.
+        if (typeof raw === 'string' && NUMBER_WITH_UNIT.test(raw.trim())) return { ok: true, value: raw.trim().replace(/\s+/g, ' ') };
         const n = typeof raw === 'number' ? raw : typeof raw === 'string' && raw.trim() !== '' ? Number(raw) : NaN;
         if (!Number.isFinite(n)) return { ok: false, error: `${input.name}: not a finite number` };
         if (input.min !== undefined && input.max !== undefined && (n < input.min || n > input.max)) {

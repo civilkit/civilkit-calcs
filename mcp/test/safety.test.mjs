@@ -87,7 +87,7 @@ test('deep nesting and recursion end in an error, not a crash', async () => {
 
 test('input values cannot inject lines or units', async () => {
     const src = 'L: ? 6 m | span\nM: L * 2 kN';
-    for (const bad of ['8\n#include x', '8; #read M from a', '<script>', '8 m', '1e400', '']) {
+    for (const bad of ['8\n#include x', '8; #read M from a', '<script>', '8 m\n#include x', '8 m; #read M from a', '8 m <b>', '1e400', '']) {
         const r = await callTool(handler, 'calcs_evaluate_sheet', { sheet: src, inputs: { L: bad } });
         assert.equal(r.structured.ran, false, JSON.stringify(bad));
         assert.equal(r.structured.errors[0].source, 'inputs');

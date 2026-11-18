@@ -247,6 +247,17 @@ const mOf = (t) => /Mmax = .*?= ([\d.]+) kN · m/.exec(t)?.[1] ?? null;
     await page.evaluate(() => document.getElementById('f').contentWindow.postMessage({ type: 'civilkit-get' }, '*'));
     after = await until(msgs, (m) => m.slice(n).some((x) => x.data.type === 'civilkit-results'), 20);
     check(after.slice(n).some((x) => x.data.type === 'civilkit-results'), 'civilkit-get sends the last results again');
+    // A value with a unit is converted by the engine; another dimension comes back as a sheet error.
+    n = await count();
+    await page.evaluate(() => document.getElementById('f').contentWindow.postMessage({ type: 'civilkit-set', values: { L: '7000 mm' } }, '*'));
+    after = await until(msgs, (m) => m.slice(n).some((x) => x.data.type === 'civilkit-results'));
+    const ures = after.slice(n).find((x) => x.data.type === 'civilkit-results');
+    check(!!ures && Math.abs(ures.data.values.L?.value - 7) < 1e-9 && ures.data.errors.length === 0, `civilkit-set {L: "7000 mm"} is converted to the declared metres (L ${ures?.data.values.L?.value}, ${JSON.stringify(ures?.data.errors)})`);
+    n = await count();
+    await page.evaluate(() => document.getElementById('f').contentWindow.postMessage({ type: 'civilkit-set', values: { L: '8 kN' } }, '*'));
+    after = await until(msgs, (m) => m.slice(n).some((x) => x.data.type === 'civilkit-results'));
+    const cres = after.slice(n).find((x) => x.data.type === 'civilkit-results');
+    check(!!cres && cres.data.errors.some((e) => /inconsistent with the target units/.test(e.message)), `civilkit-set {L: "8 kN"} comes back as a unit error in the results (${JSON.stringify(cres?.data.errors?.[0])})`);
     await context.close();
 }
 

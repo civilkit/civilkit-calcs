@@ -52,7 +52,7 @@ reader typed into that host's frame.
 | `civilkit-ready {sample, inputs}` | embed to host, once the form is built |
 | `civilkit-results {sample, values}` | embed to host, after each calculation |
 | `civilkit-error {errors}` | embed to host, for a refused set |
-| `civilkit-set {values}` | host to embed: names must be inputs; numbers finite and within the slider bounds; a choice one of the option values or labels; a checkbox true, false, 1 or 0. At most 200 names a message. |
+| `civilkit-set {values}` | host to embed: names must be inputs; numbers finite and within the slider bounds, or a number with a unit (`"5000 mm"`, `"8000 N/m"`), whose shape only is checked here: the engine converts it to the unit the input declares, applies the bounds after the conversion and refuses another dimension, which comes back in the next `civilkit-results` errors (calcpad-core `ui.rs`, `convert_override`; `tests/ui_override_units.rs`); a choice one of the option values or labels; a checkbox true, false, 1 or 0. At most 200 names a message. |
 | `civilkit-get` | host to embed: repeat the last results |
 | `civilkit-load {source, files?, values?, name?, promote?}` | host to embed: show the host's own text (see "The host's own text") |
 
