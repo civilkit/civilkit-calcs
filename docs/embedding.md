@@ -54,6 +54,20 @@ reader typed into that host's frame.
 | `civilkit-error {errors}` | embed to host, for a refused set |
 | `civilkit-set {values}` | host to embed: names must be inputs; numbers finite and within the slider bounds; a choice one of the option values or labels; a checkbox true, false, 1 or 0. At most 200 names a message. |
 | `civilkit-get` | host to embed: repeat the last results |
+| `civilkit-load {source, files?, values?, name?}` | host to embed: show the host's own text (see "The host's own text") |
+
+## The host's own text
+
+`?embed=1&host=1` starts with no sample (the title says it waits, the Open link is hidden, `civilkit-ready` carries
+`sample: null` and no inputs) and `civilkit-load` supplies the text. It goes through the same `useSource` as a sample: the
+sheet is compiled for the form, number lines are promoted as for a sheet without inputs, and Python blocks are left out
+unless `allowpython=1`. Checked in `checkLoad`: `source` a non-empty string up to 1,000,000 characters; `files` an object of
+plain relative `.cpd/.txt/.csv/.xlsx/.xlsm` names (no leading slash, no `..`) to base64, 5,000,000 characters in all (they
+become the request's `extraFiles`, as a sample's assets do); `name` letters, digits, dot, dash, underscore, at most 60
+(it names the results' `sample` field and the engine's source path, and the title shows it). A refused load changes nothing
+and answers `civilkit-error`. Loads are queued and run in order; each clears the entered values, then applies `values` if
+given. A load works in a framed embed only, from the parent only, like every other message; it works with any
+`sample` too (it replaces the sample). Nothing is stored: the text lives in the page until it is reloaded, so the host owns it.
 
 ## embed.js
 

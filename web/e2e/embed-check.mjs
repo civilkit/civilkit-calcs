@@ -41,6 +41,9 @@ const HOST_PAGES = {
   sandbox="allow-scripts allow-same-origin allow-popups allow-popups-to-escape-sandbox"></iframe>
 <iframe id="other" srcdoc="<p>another frame</p>"></iframe>
 <script>window.msgs=[];addEventListener('message',function(e){if(e.source===document.getElementById('f').contentWindow)msgs.push({origin:e.origin,data:e.data})});</script>`,
+    '/hostmode.html': `<!doctype html><meta charset="utf-8"><title>host mode</title>
+<iframe id="f" src="${origin}/?embed=1&host=1" width="100%" height="560" sandbox="allow-scripts allow-same-origin allow-popups allow-popups-to-escape-sandbox"></iframe>
+<script>window.msgs=[];addEventListener('message',function(e){if(e.source===document.getElementById('f').contentWindow)msgs.push({origin:e.origin,data:e.data})});</script>`,
     '/loader.html': `<!doctype html><meta charset="utf-8"><title>loader host</title><p>A host page.</p>
 <div id="calc" data-civilkit-sample="template-pipe-flow-darcy" data-origin="${origin}" data-path="/" data-height="400" data-theme="dark"></div>
 <div id="prod" data-civilkit-sample="template-cantilever-tip-load"></div>
@@ -244,6 +247,46 @@ const mOf = (t) => /Mmax = .*?= ([\d.]+) kN · m/.exec(t)?.[1] ?? null;
     await page.evaluate(() => document.getElementById('f').contentWindow.postMessage({ type: 'civilkit-get' }, '*'));
     after = await until(msgs, (m) => m.slice(n).some((x) => x.data.type === 'civilkit-results'), 20);
     check(after.slice(n).some((x) => x.data.type === 'civilkit-results'), 'civilkit-get sends the last results again');
+    await context.close();
+}
+
+// ---- 4b. civilkit-load: the host's own text ----------------------------------------------------------------------
+{
+    const { context, page } = await newPage(1000);
+    await page.goto(`${hostOrigin}/hostmode.html`);
+    const msgs = () => page.evaluate(() => window.msgs);
+    const send = (m) => page.evaluate((x) => document.getElementById('f').contentWindow.postMessage(x, '*'), m);
+    const first = await until(msgs, (m) => m.some((x) => x.data.type === 'civilkit-ready'));
+    const r0 = first.find((x) => x.data.type === 'civilkit-ready');
+    check(r0?.data.sample === null && r0.data.inputs.length === 0, `?host=1 starts empty and says ready (${JSON.stringify(r0?.data)})`);
+    check(!first.some((x) => x.data.type === 'civilkit-results'), '?host=1 calculates nothing before the host sends its text');
+    const SHEET = '<!--sheet-->\n# From the host\n\nL: ? 6 m [2 .. 12 step 0.5] | span\nw: ? 12 kN/m | load\nM_max = w*L^2/8\n';
+    let n = (await msgs()).length;
+    await send({ type: 'civilkit-load', source: SHEET, name: 'studio-beam' });
+    let got = await until(msgs, (m) => m.slice(n).some((x) => x.data.type === 'civilkit-results'));
+    const ready = got.slice(n).find((x) => x.data.type === 'civilkit-ready');
+    const res = got.slice(n).find((x) => x.data.type === 'civilkit-results');
+    check(ready?.data.inputs.map((i) => i.name).join() === 'L,w' && ready.data.inputs[0].max === 12, `civilkit-load builds the form from the host's sheet (${ready?.data.inputs.map((i) => i.name)})`);
+    check(res?.data.sample === 'studio-beam' && Math.abs(res.data.values.M_max?.value - 54) < 0.01, `and the results come back under the host's name (${res?.data.sample}, M_max ${res?.data.values.M_max?.value})`);
+    const ttl = await page.frameLocator('#f').locator('.ce-title').textContent();
+    check(ttl === 'studio-beam', `the title shows the host's name (${ttl})`);
+    n = (await msgs()).length;
+    await send({ type: 'civilkit-load', source: SHEET, values: { L: 8, w: 10 } });
+    got = await until(msgs, (m) => m.slice(n).some((x) => x.data.type === 'civilkit-results'));
+    const res2 = got.slice(n).find((x) => x.data.type === 'civilkit-results');
+    check(Math.abs(res2?.data.values.M_max?.value - 80) < 0.01, `civilkit-load with values: L = 8, w = 10 gives M_max = 80 (${res2?.data.values.M_max?.value})`);
+    for (const bad of [{ source: 5 }, { source: '' }, { source: SHEET, files: { '../x.csv': 'QQ==' } }, { source: SHEET, files: { 'a.csv': '***' } }, { source: SHEET, name: 'a b/c' }]) {
+        n = (await msgs()).length;
+        await send({ type: 'civilkit-load', ...bad });
+        got = await until(msgs, (m) => m.slice(n).some((x) => x.data.type === 'civilkit-error'), 20);
+        const err = got.slice(n).find((x) => x.data.type === 'civilkit-error');
+        check(!!err && !got.slice(n).some((x) => x.data.type === 'civilkit-results'), `civilkit-load ${JSON.stringify(bad).slice(0, 60)} is refused (${err?.data.errors})`);
+    }
+    // An attached file is readable by the sheet (#read).
+    n = (await msgs()).length;
+    await send({ type: 'civilkit-load', source: '<!--sheet-->\nk: ? 2\n', files: { 'data.csv': 'MSwyCjMsNA==' } });
+    got = await until(msgs, (m) => m.slice(n).some((x) => x.data.type === 'civilkit-results'));
+    check(got.slice(n).some((x) => x.data.type === 'civilkit-results'), 'civilkit-load with a files entry is accepted');
     await context.close();
 }
 

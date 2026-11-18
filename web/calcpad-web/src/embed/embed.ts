@@ -15,6 +15,8 @@
 //   from the host  {type:'civilkit-set', values:{L: 8}}     set inputs by name (checked: a known name, a finite number
 //                                                            within the slider bounds, one of the options)
 //                  {type:'civilkit-get'}                    post the last results again
+//                  {type:'civilkit-load', source, files?, values?, name?}   show the host's own sheet or worksheet text
+//                                                            (with `?host=1` the embed starts empty and waits for it)
 // Inlined (?inline) rather than imported as style sheets: the entry's one dynamic import would otherwise preload the
 // app's style sheets instead of these.
 import tokensCss from '../styles/civilkit-tokens.css?inline';
@@ -35,6 +37,8 @@ const themeParam = ((v) => (v === 'light' || v === 'dark' ? v : 'auto'))(params.
 const viewMode = ((v) => (v === 'input' || v === 'results' ? v : 'both'))(params.get('mode'));
 const hidden = new Set((params.get('hide') ?? '').split(',').map((s) => s.trim()));
 const allowPython = params.get('allowpython') === '1';
+/** `?host=1`: no sample; the host supplies the text with civilkit-load. */
+const hostMode = params.get('host') === '1';
 
 const base = new URL(import.meta.env.BASE_URL || './', document.baseURI).href;
 const framed = window.parent !== window;
@@ -59,6 +63,8 @@ const paintTheme = () => { document.documentElement.dataset.theme = theme(); };
 paintTheme();
 
 // ---- the page -----------------------------------------------------------------------------------------------------
+/** The name the results are reported under and the engine's source path uses: the sample id, or what the host called its text. */
+let docId = hostMode ? 'host' : sampleId;
 const openUrl = new URL(`./?sample=${encodeURIComponent(sampleId)}`, base).href;
 const root = el('div', { className: 'ce', 'data-mode': viewMode });
 const title = el('h1', { className: 'ce-title' }, 'Loading...');
@@ -94,7 +100,7 @@ const api = (endpoint: string) => `${window.location.origin}/api/calcpad/${endpo
 const overrides = () => Object.fromEntries(values);
 const request = () => ({
     content, settings, outputFormat: 'html', forPrint: false, theme: theme(), enableUi: false, uiOverrides: overrides(),
-    includeLineAnchors: false, hideErrorLines: true, write: false, extraFiles, sourceFilePath: `/${sampleId}.${isSheetText(content) ? 'sheet' : 'cpd'}`,
+    includeLineAnchors: false, hideErrorLines: true, write: false, extraFiles, sourceFilePath: `/${docId}.${isSheetText(content) ? 'sheet' : 'cpd'}`,
 });
 
 // ---- the form (form.ts) --------------------------------------------------------------------------------------------
@@ -172,31 +178,88 @@ async function postResults(): Promise<void> {
         const value = v.value.trim() !== '' && Number.isFinite(n) ? n : v.value;
         out[v.name] = { value, unit: v.unit ?? '', text: `${v.value}${v.unit ? ' ' + v.unit : ''}` };
     }
-    lastResults = { type: 'civilkit-results', sample: sampleId, values: out };
+    lastResults = { type: 'civilkit-results', sample: docId, values: out };
     toHost(lastResults);
 }
 
 // ---- the host -----------------------------------------------------------------------------------------------------
-window.addEventListener('message', (e) => {
-    if (!framed || e.source !== window.parent) return;
-    const d = e.data as { type?: unknown; values?: unknown };
-    if (!d || typeof d !== 'object' || typeof d.type !== 'string') return;
-    if (d.type === 'civilkit-get') { if (lastResults) toHost(lastResults); return; }
-    if (d.type !== 'civilkit-set') return;
+/** Sets inputs from a host's `values`; the refused ones come back as messages. */
+function applyValues(raw: Record<string, unknown>): { errors: string[]; changed: boolean } {
     const errors: string[] = [];
-    if (!d.values || typeof d.values !== 'object' || Array.isArray(d.values)) {
-        toHost({ type: 'civilkit-error', errors: ['values must be an object of input names'] });
-        return;
-    }
     let changed = false;
-    for (const [name, raw] of Object.entries(d.values as Record<string, unknown>).slice(0, 200)) {
+    for (const [name, v] of Object.entries(raw).slice(0, 200)) {
         const input = inputs.find((i) => i.name === name);
         if (!input) { errors.push(`${String(name).slice(0, 60)}: not an input of this sheet`); continue; }
-        const c = checkValue(input, raw);
+        const c = checkValue(input, v);
         if (!c.ok) { errors.push(c.error); continue; }
         if (values.get(name) !== c.value) { values.set(name, c.value); changed = true; }
         showValue(form, input.name, input, c.value);
     }
+    return { errors, changed };
+}
+
+const MAX_SOURCE = 1_000_000;       // characters of sheet text in one civilkit-load
+const MAX_FILES = 5_000_000;        // base64 characters of attached files in one civilkit-load
+const FILE_NAME = /^(?!\/)(?!.*\.\.)[\w .,()+\-\/]{1,120}\.(cpd|txt|csv|xlsx|xlsm)$/i;
+const DOC_NAME = /^[\w.\-]{1,60}$/;
+
+/** What a civilkit-load asks for, checked: the text, the files (a name that is a plain relative path, its bytes in base64), the name. */
+function checkLoad(d: { source?: unknown; files?: unknown; values?: unknown; name?: unknown }): { ok: true; source: string; files: Record<string, string>; name: string } | { ok: false; error: string } {
+    if (typeof d.source !== 'string' || d.source.trim() === '') return { ok: false, error: 'source must be the sheet text' };
+    if (d.source.length > MAX_SOURCE) return { ok: false, error: `source is over ${MAX_SOURCE} characters` };
+    const files: Record<string, string> = {};
+    if (d.files !== undefined) {
+        if (!d.files || typeof d.files !== 'object' || Array.isArray(d.files)) return { ok: false, error: 'files must be an object of name to base64 text' };
+        let total = 0;
+        for (const [k, v] of Object.entries(d.files as Record<string, unknown>)) {
+            if (!FILE_NAME.test(k)) return { ok: false, error: `files: "${k.slice(0, 60)}" is not a relative .cpd, .txt, .csv, .xlsx or .xlsm name` };
+            if (typeof v !== 'string' || !/^[A-Za-z0-9+/=\s]*$/.test(v)) return { ok: false, error: `files: "${k}" is not base64 text` };
+            total += v.length;
+            if (total > MAX_FILES) return { ok: false, error: `files are over ${MAX_FILES} characters in all` };
+            files[k] = v;
+        }
+    }
+    if (d.name !== undefined && (typeof d.name !== 'string' || !DOC_NAME.test(d.name))) return { ok: false, error: 'name must be letters, digits, dot, dash or underscore (up to 60)' };
+    return { ok: true, source: d.source, files, name: typeof d.name === 'string' ? d.name : 'host' };
+}
+
+// One load at a time, in the order sent: each rebuilds the form, then the results follow.
+let loading: Promise<void> = Promise.resolve();
+
+window.addEventListener('message', (e) => {
+    if (!framed || e.source !== window.parent) return;
+    const d = e.data as { type?: unknown; values?: unknown; source?: unknown; files?: unknown; name?: unknown };
+    if (!d || typeof d !== 'object' || typeof d.type !== 'string') return;
+    if (d.type === 'civilkit-get') { if (lastResults) toHost(lastResults); return; }
+    if (d.type === 'civilkit-load') {
+        const c = checkLoad(d);
+        if (!c.ok) { toHost({ type: 'civilkit-error', errors: [c.error] }); return; }
+        loading = loading.then(async () => {
+            try {
+                docId = c.name;
+                extraFiles = c.files;
+                images = (html: string) => html;
+                lastResults = null;
+                values.clear();
+                title.textContent = c.name;
+                document.title = `${c.name}: CivilKit Calcs`;
+                await useSource(c.source);
+                const set = d.values && typeof d.values === 'object' && !Array.isArray(d.values) ? applyValues(d.values as Record<string, unknown>) : { errors: [], changed: false };
+                if (set.errors.length) toHost({ type: 'civilkit-error', errors: set.errors });
+                postReady();
+                await render();
+            } catch (err) {
+                toHost({ type: 'civilkit-error', errors: [`the text could not be loaded: ${String(err instanceof Error ? err.message : err).slice(0, 200)}`] });
+            }
+        });
+        return;
+    }
+    if (d.type !== 'civilkit-set') return;
+    if (!d.values || typeof d.values !== 'object' || Array.isArray(d.values)) {
+        toHost({ type: 'civilkit-error', errors: ['values must be an object of input names'] });
+        return;
+    }
+    const { errors, changed } = applyValues(d.values as Record<string, unknown>);
     if (errors.length) toHost({ type: 'civilkit-error', errors });
     if (changed) schedule(0);
     else if (!errors.length && lastResults) toHost(lastResults);
@@ -251,6 +314,13 @@ function fail(message: string): void {
 }
 
 async function start(): Promise<void> {
+    if (hostMode) {
+        title.textContent = 'Waiting for the host';
+        open.hidden = true;
+        buildForm();
+        postReady();
+        return;
+    }
     try {
         const m = await loadManifest();
         sample = m.samples.find((s) => s.id === sampleId) ?? null;
@@ -264,8 +334,12 @@ async function start(): Promise<void> {
     images = src.images;
     await useSource(src.text);
     if (editMode) addEditor();
-    toHost({ type: 'civilkit-ready', sample: sampleId, inputs: inputs.map(({ name, kind, label, unit, value, min, max, step, options }) => ({ name, kind, label, unit, value, min, max, step, options })) });
+    postReady();
     await render();
+}
+
+function postReady(): void {
+    toHost({ type: 'civilkit-ready', sample: hostMode ? null : docId, inputs: inputs.map(({ name, kind, label, unit, value, min, max, step, options }) => ({ name, kind, label, unit, value, min, max, step, options })) });
 }
 
 if (themeParam === 'auto') dark.addEventListener('change', () => { paintTheme(); schedule(0); });

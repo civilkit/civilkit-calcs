@@ -67,6 +67,7 @@ The embed and the page around it talk with `postMessage`. The embed answers only
 | `{type: 'civilkit-error', errors}` | embed to page | A `civilkit-set` was refused in full or in part, with the reasons. |
 | `{type: 'civilkit-set', values: {L: 8}}` | page to embed | Sets inputs by name, then calculates. |
 | `{type: 'civilkit-get'}` | page to embed | Sends the last results again. |
+| `{type: 'civilkit-load', source, files?, values?, name?}` | page to embed | Shows the page's own sheet or worksheet text instead of a sample. Use `?embed=1&host=1` so the embed starts empty and waits for it. `source` is the text (up to 1,000,000 characters); `files` is an object of name to base64 text for `.cpd`, `.txt`, `.csv`, `.xlsx` and `.xlsm` files the sheet reads (plain relative names, up to 5,000,000 characters in all); `values` sets inputs as `civilkit-set` does; `name` (letters, digits, dot, dash, underscore) is what the results are reported under. The embed answers with `civilkit-ready` and `civilkit-results`, or `civilkit-error` for a refused load. |
 
 A value set from the page must name an input of the sheet. A number must be finite and, for a slider, within its
 bounds; a choice must be one of its option values (or labels); a checkbox takes `true`, `false`, `1` or `0`. The valid
