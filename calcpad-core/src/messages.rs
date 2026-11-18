@@ -232,6 +232,8 @@ pub const The_UI_0_only_applies_to_an_entry: &str = "#UI '{0}' only applies to a
 pub const The_UI_min_must_not_be_above_max: &str = "#UI 'min' ({0}) must not be above 'max' ({1}).";
 pub const The_UI_step_must_be_above_zero: &str = "#UI 'step' must be above zero.";
 pub const The_UI_value_0_is_outside_1_to_2: &str = "{0} is outside the range {1} to {2}.";
+pub const The_UI_value_0_has_units_but_the_input_is_a_plain_number: &str =
+    "{0} was given with units, but this input is a plain number. Give the number only.";
 pub const The_UI_width_must_be_a_number_or_a_percentage: &str =
     "#UI 'width' must be a number of pixels or a percentage, e.g. \"75%\".";
 pub const Datagrid_size_cannot_exceed_0_cells: &str =

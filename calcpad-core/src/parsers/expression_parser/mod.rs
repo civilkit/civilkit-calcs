@@ -1035,6 +1035,10 @@ impl ExpressionParser {
                 // hand side, and an error has to name that rather than the source.
                 let mut expression = token.value.clone();
                 let ui = self.take_ui_control(&token.value);
+                if ui.is_some() {
+                    // A unit written after the quote (`l = 5'm`) is the line's next token, a text: what a value with a unit converts to.
+                    self.ui.label_hint = tokens.borrow().get(i + 1).filter(|t| t.ttype == TokenTypes::Text).map(|t| t.value.trim().to_string());
+                }
                 let r = match ui {
                     Some(ui) => match self.prepare_ui_expression(ui, &token.value) {
                         Ok(e) => {

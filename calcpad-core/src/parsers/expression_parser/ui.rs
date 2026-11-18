@@ -8,6 +8,7 @@ use crate::extension_methods::enumerate_comments;
 use crate::math_parser_exception::{CResult, MathParserException};
 use crate::messages;
 use crate::netfmt::{fmt, html_attribute_encode, html_encode};
+use crate::parsers::math_parser::MathParser;
 use crate::ui_dto::{UiDto, MAX_SIZE};
 use crate::ui_syntax;
 
@@ -48,6 +49,8 @@ pub(super) struct UiMeta {
 pub(super) struct UiState {
     pub line_ui_controls: Option<Vec<UiMeta>>,
     pub pending_ui_error: Option<String>,
+    /// The text after the quote on the control's line (`m` of `l = 5'm`), which names the unit of a plain number input.
+    pub label_hint: Option<String>,
     pub ui_take_index: usize,
     /// In chars, like the rest of the line handling.
     pub ui_skip_chars: usize,
@@ -317,6 +320,81 @@ fn apply_ui_override(ui: &UiMeta, expression: &str, value: &str) -> Option<Strin
     } else {
         Some(format!("{} {}{}", lhs, value, &rhs[i..]))
     }
+}
+
+/// The unit text of an entered value that is a number followed by a unit (`5000 mm`, `8000 N/m`); None for a bare number, an
+/// expression or anything else, which keep the old way of applying a value.
+fn value_unit(value: &str) -> Option<&str> {
+    let t = value.trim();
+    let b = t.as_bytes();
+    let mut i = 0;
+    if i < b.len() && (b[i] == b'-' || b[i] == b'+') {
+        i += 1;
+    }
+    let digits_from = i;
+    while i < b.len() && (b[i].is_ascii_digit() || b[i] == b'.') {
+        i += 1;
+    }
+    if i == digits_from {
+        return None;
+    }
+    if i < b.len() && (b[i] == b'e' || b[i] == b'E') {
+        let mut j = i + 1;
+        if j < b.len() && (b[j] == b'-' || b[j] == b'+') {
+            j += 1;
+        }
+        let from = j;
+        while j < b.len() && b[j].is_ascii_digit() {
+            j += 1;
+        }
+        if j > from {
+            i = j;
+        }
+    }
+    let rest = t[i..].trim_start();
+    looks_like_unit(rest).then_some(rest)
+}
+
+/// Text that reads as a unit: a unit symbol first, then symbols, digits and the operators of a unit (`kN/m`, `m^2`, `kN*m`).
+fn looks_like_unit(s: &str) -> bool {
+    let mut chars = s.chars();
+    match chars.next() {
+        Some(c) if crate::validator::is_letter(c) || crate::validator::is_unit_start(c) => {}
+        _ => return false,
+    }
+    s.chars().all(|c| crate::validator::is_letter(c) || crate::validator::is_unit_char(c) || c.is_ascii_digit() || "*/^()-\u{00B7}\u{2219}\u{22C5}\u{2215}\u{2044}".contains(c))
+}
+
+/// The unit a number input declares: written after its number (`L = 6m`), or as the label after the quote (`l = 5'm`).
+fn declared_unit(expression: &str, label: Option<&str>) -> Option<String> {
+    let eq = index_of_assignment(expression)?;
+    let rhs = expression[eq + 1..].trim_start();
+    let i = rhs.char_indices().find(|&(_, c)| !is_numeric_char(c)).map(|(k, _)| k).unwrap_or(rhs.len());
+    let tail = &rhs[i..];
+    let quote = tail.find('\'');
+    let written = tail[..quote.unwrap_or(tail.len())].trim();
+    if looks_like_unit(written) {
+        return Some(written.to_string());
+    }
+    if written.is_empty() {
+        let from_quote = quote.and_then(|q| tail[q + 1..].split_whitespace().next());
+        let word = from_quote.or_else(|| label.and_then(|l| l.split_whitespace().next()))?;
+        if looks_like_unit(word) {
+            return Some(word.to_string());
+        }
+    }
+    None
+}
+
+/// An entered value with a unit, written as a conversion to the unit the input declares (`L = 5000 mm|m`), so the engine converts it
+/// and refuses a unit of another dimension on that line. None when the line declares no unit: a plain number is not given units.
+fn convert_override(expression: &str, value: &str, label: Option<&str>) -> Option<String> {
+    let eq = index_of_assignment(expression)?;
+    let declared = declared_unit(expression, label)?;
+    let rhs = expression[eq + 1..].trim_start();
+    let i = rhs.char_indices().find(|&(_, c)| !is_numeric_char(c)).map(|(k, _)| k).unwrap_or(rhs.len());
+    let comment = rhs[i..].find('\'').map(|q| &rhs[i + q..]).unwrap_or("");
+    Some(format!("{} {}|{}{}{}", &expression[..eq + 1], value.trim(), declared, if comment.is_empty() { "" } else { " " }, comment))
 }
 
 fn is_numeric_char(c: char) -> bool {
@@ -810,6 +888,13 @@ impl ExpressionParser {
         Ok(())
     }
 
+    /// The number an expression comes to, worked out by a parser of its own so the worksheet's state is untouched.
+    fn scratch_real(&self, text: &str) -> Option<f64> {
+        let p = MathParser::new(self.math_settings.clone());
+        p.parse(text, false).and_then(|_| p.calculate(false, -1)).ok()?;
+        Some(p.real())
+    }
+
     fn evaluate_count(&mut self, expression: &str) -> i32 {
         let p = self.p();
         let r = p.parse(expression, false).and_then(|_| p.calculate(false, -1));
@@ -848,8 +933,29 @@ impl ExpressionParser {
                 }
             }
             let ui = self.ui_meta(i);
+            // A value with a unit (`5000 mm`) into a number input: converted to the unit the input declares, a unit of another dimension refused.
+            let with_unit = !is_datagrid && ui.keeps_units && !ui.allows_expression && ui.ty != "dropdown" && ui.ty != "radio" && value_unit(&value).is_some();
+            let mut converted: Option<String> = None;
+            if with_unit {
+                match convert_override(&expression, &value, self.ui.label_hint.as_deref()) {
+                    Some(e) => converted = Some(e),
+                    None => {
+                        return Err(MathParserException::new(fmt(
+                            messages::The_UI_value_0_has_units_but_the_input_is_a_plain_number,
+                            &[&format!("{} = {}", ui.variable_name, value.trim())],
+                        )));
+                    }
+                }
+            }
             if ui.ty != "datagrid" && (ui.min.is_some() || ui.max.is_some()) {
-                if let Some(x) = leading_number(&value) {
+                // The bounds are numbers in the declared unit, so a value with a unit is compared after the conversion; if it cannot be
+                // worked out here the line's own conversion reports the problem.
+                let x = if with_unit {
+                    declared_unit(&expression, self.ui.label_hint.as_deref()).and_then(|d| self.scratch_real(&format!("{}|{}", value.trim(), d)))
+                } else {
+                    leading_number(&value)
+                };
+                if let Some(x) = x {
                     if ui.min.is_some_and(|lo| x < lo) || ui.max.is_some_and(|hi| x > hi) {
                         let show = |v: Option<f64>| v.map_or("-\u{221e}".to_string(), crate::netfmt::double_to_string);
                         return Err(MathParserException::new(fmt(
@@ -859,7 +965,9 @@ impl ExpressionParser {
                     }
                 }
             }
-            if let Some(overridden) = apply_ui_override(self.ui_meta(i), &expression, &value) {
+            if let Some(e) = converted {
+                expression = e;
+            } else if let Some(overridden) = apply_ui_override(self.ui_meta(i), &expression, &value) {
                 expression = overridden;
             }
         }
