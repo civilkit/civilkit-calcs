@@ -54,7 +54,7 @@ reader typed into that host's frame.
 | `civilkit-error {errors}` | embed to host, for a refused set |
 | `civilkit-set {values}` | host to embed: names must be inputs; numbers finite and within the slider bounds; a choice one of the option values or labels; a checkbox true, false, 1 or 0. At most 200 names a message. |
 | `civilkit-get` | host to embed: repeat the last results |
-| `civilkit-load {source, files?, values?, name?}` | host to embed: show the host's own text (see "The host's own text") |
+| `civilkit-load {source, files?, values?, name?, promote?}` | host to embed: show the host's own text (see "The host's own text") |
 
 ## The host's own text
 
@@ -66,7 +66,7 @@ plain relative `.cpd/.txt/.csv/.xlsx/.xlsm` names (no leading slash, no `..`) to
 become the request's `extraFiles`, as a sample's assets do); `name` letters, digits, dot, dash, underscore, at most 60
 (it names the results' `sample` field and the engine's source path, and the title shows it). A refused load changes nothing
 and answers `civilkit-error`. Loads are queued and run in order; each clears the entered values, then applies `values` if
-given. A load works in a framed embed only, from the parent only, like every other message; it works with any
+given. `promote` (a boolean, default false) is the host's choice to have plain number lines of a sheet become editable inputs as they do for a sample; without it the host's definitions stay definitions and only the sheet's own `?` inputs are boxes. `civilkit-results` carries `errors: [{line, severity, message}]`: the errors the engine wrote into the page (a unit clash, an undefined name), `line` counted from 1 in the host's text, which cost one more engine run (with line anchors) after each calculation when framed. A load works in a framed embed only, from the parent only, like every other message; it works with any
 `sample` too (it replaces the sample). Nothing is stored: the text lives in the page until it is reloaded, so the host owns it.
 
 ## embed.js

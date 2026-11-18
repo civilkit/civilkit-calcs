@@ -10,12 +10,12 @@
 // postMessage API (only with the embedding page, event.source === window.parent):
 //   to the host    {type:'civilkit-embed-height', height}   on every layout change
 //                  {type:'civilkit-ready', sample, inputs}   once the form is built
-//                  {type:'civilkit-results', sample, values:{name:{value, unit, text}}}   after each calculation
+//                  {type:'civilkit-results', sample, values:{name:{value, unit, text}}, errors:[{line, severity, message}]}   after each calculation
 //                  {type:'civilkit-error', errors:[...]}     a civilkit-set that was refused (in full or in part)
 //   from the host  {type:'civilkit-set', values:{L: 8}}     set inputs by name (checked: a known name, a finite number
 //                                                            within the slider bounds, one of the options)
 //                  {type:'civilkit-get'}                    post the last results again
-//                  {type:'civilkit-load', source, files?, values?, name?}   show the host's own sheet or worksheet text
+//                  {type:'civilkit-load', source, files?, values?, name?, promote?}   show the host's own sheet or worksheet text
 //                                                            (with `?host=1` the embed starts empty and waits for it)
 // Inlined (?inline) rather than imported as style sheets: the entry's one dynamic import would otherwise preload the
 // app's style sheets instead of these.
@@ -94,6 +94,8 @@ let images = (html: string) => html;
 let inputs: EmbedInput[] = [];
 const values = new Map<string, string>();
 let lastResults: Record<string, unknown> | null = null;
+/** The errors the last convert reported (macros and the like), merged into the problems sent with the results. */
+let lastErrors: { line: number | null; message: string }[] = [];
 const settings = buildApiSettings(DEFAULT_CALCPAD_SETTINGS);
 
 const api = (endpoint: string) => `${window.location.origin}/api/calcpad/${endpoint}`;
@@ -153,7 +155,8 @@ async function render(): Promise<void> {
     try {
         const res = await fetch(api('convert'), { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(request()) });
         if (!res.ok) throw new Error(await res.text());
-        const errors = JSON.parse(decodeURIComponent(res.headers.get('X-Calcpad-Errors') ?? '%5B%5D')) as unknown[];
+        const errors = JSON.parse(decodeURIComponent(res.headers.get('X-Calcpad-Errors') ?? '%5B%5D')) as { sourceLine?: number; message?: string }[];
+        lastErrors = errors.slice(0, 50).map((e) => ({ line: typeof e.sourceLine === 'number' && e.sourceLine > 0 ? e.sourceLine : null, message: String(e.message ?? '').slice(0, 300) }));
         frame.srcdoc = prepare(images(await res.text()));
         status.textContent = errors.length ? `Calculated, with ${errors.length} error${errors.length === 1 ? '' : 's'} in the sheet.` : 'Calculated.';
         if (framed && !again) await postResults();
@@ -168,7 +171,28 @@ async function render(): Promise<void> {
 }
 
 /** What the variables came to (the transport's values endpoint), to the host. */
+/** The sheet's errors for the host: the ones the engine writes into the page (a unit clash, an undefined name) with their line in the
+ *  host's text (counted from 1), merged with what the convert reported itself. One more engine run, with line anchors, which is how the
+ *  page tells an error's line; it is only made when framed. */
+async function sheetProblems(): Promise<{ line: number | null; severity: 'error'; message: string }[]> {
+    const out = lastErrors.map((e) => ({ line: e.line, severity: 'error' as const, message: e.message }));
+    try {
+        const res = await fetch(api('convert'), { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ ...request(), includeLineAnchors: true }) });
+        if (res.ok) {
+            const doc = new DOMParser().parseFromString(await res.text(), 'text/html');
+            for (const el of Array.from(doc.querySelectorAll('span.err')).slice(0, 50)) {
+                const n = Number(el.getAttribute('data-source-line'));
+                const line = Number.isFinite(n) && n > 0 ? n : null;
+                const message = (el.textContent ?? '').replace(/\s+/g, ' ').trim().slice(0, 300);
+                if (message && !out.some((o) => o.line === line && o.message === message)) out.push({ line, severity: 'error', message });
+            }
+        }
+    } catch { /* the results go without the problems */ }
+    return out.slice(0, 50);
+}
+
 async function postResults(): Promise<void> {
+    const problems = await sheetProblems();
     const res = await fetch(api('values'), { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(request()) });
     if (!res.ok) return;
     const { variables } = (await res.json()) as { variables: { name: string; value: string; unit: string }[] };
@@ -178,7 +202,7 @@ async function postResults(): Promise<void> {
         const value = v.value.trim() !== '' && Number.isFinite(n) ? n : v.value;
         out[v.name] = { value, unit: v.unit ?? '', text: `${v.value}${v.unit ? ' ' + v.unit : ''}` };
     }
-    lastResults = { type: 'civilkit-results', sample: docId, values: out };
+    lastResults = { type: 'civilkit-results', sample: docId, values: out, errors: problems };
     toHost(lastResults);
 }
 
@@ -204,7 +228,7 @@ const FILE_NAME = /^(?!\/)(?!.*\.\.)[\w .,()+\-\/]{1,120}\.(cpd|txt|csv|xlsx|xls
 const DOC_NAME = /^[\w.\-]{1,60}$/;
 
 /** What a civilkit-load asks for, checked: the text, the files (a name that is a plain relative path, its bytes in base64), the name. */
-function checkLoad(d: { source?: unknown; files?: unknown; values?: unknown; name?: unknown }): { ok: true; source: string; files: Record<string, string>; name: string } | { ok: false; error: string } {
+function checkLoad(d: { source?: unknown; files?: unknown; values?: unknown; name?: unknown; promote?: unknown }): { ok: true; source: string; files: Record<string, string>; name: string; promote: boolean } | { ok: false; error: string } {
     if (typeof d.source !== 'string' || d.source.trim() === '') return { ok: false, error: 'source must be the sheet text' };
     if (d.source.length > MAX_SOURCE) return { ok: false, error: `source is over ${MAX_SOURCE} characters` };
     const files: Record<string, string> = {};
@@ -220,7 +244,8 @@ function checkLoad(d: { source?: unknown; files?: unknown; values?: unknown; nam
         }
     }
     if (d.name !== undefined && (typeof d.name !== 'string' || !DOC_NAME.test(d.name))) return { ok: false, error: 'name must be letters, digits, dot, dash or underscore (up to 60)' };
-    return { ok: true, source: d.source, files, name: typeof d.name === 'string' ? d.name : 'host' };
+    if (d.promote !== undefined && typeof d.promote !== 'boolean') return { ok: false, error: 'promote must be true or false' };
+    return { ok: true, source: d.source, files, name: typeof d.name === 'string' ? d.name : 'host', promote: d.promote === true };
 }
 
 // One load at a time, in the order sent: each rebuilds the form, then the results follow.
@@ -228,7 +253,7 @@ let loading: Promise<void> = Promise.resolve();
 
 window.addEventListener('message', (e) => {
     if (!framed || e.source !== window.parent) return;
-    const d = e.data as { type?: unknown; values?: unknown; source?: unknown; files?: unknown; name?: unknown };
+    const d = e.data as { type?: unknown; values?: unknown; source?: unknown; files?: unknown; name?: unknown; promote?: unknown };
     if (!d || typeof d !== 'object' || typeof d.type !== 'string') return;
     if (d.type === 'civilkit-get') { if (lastResults) toHost(lastResults); return; }
     if (d.type === 'civilkit-load') {
@@ -240,10 +265,11 @@ window.addEventListener('message', (e) => {
                 extraFiles = c.files;
                 images = (html: string) => html;
                 lastResults = null;
+                lastErrors = [];
                 values.clear();
                 title.textContent = c.name;
                 document.title = `${c.name}: CivilKit Calcs`;
-                await useSource(c.source);
+                await useSource(c.source, c.promote);
                 const set = d.values && typeof d.values === 'object' && !Array.isArray(d.values) ? applyValues(d.values as Record<string, unknown>) : { errors: [], changed: false };
                 if (set.errors.length) toHost({ type: 'civilkit-error', errors: set.errors });
                 postReady();
@@ -273,12 +299,12 @@ new ResizeObserver(() => {
 }).observe(root);
 
 // ---- the sheet ----------------------------------------------------------------------------------------------------
-async function useSource(text: string): Promise<void> {
+async function useSource(text: string, promote = true): Promise<void> {
     source = text;
     const py = pythonBlocks(text);
     let run = allowPython || !py.length ? text : withoutPython(text);
     const sheet = isSheetText(run);
-    if (sheet) run = promoteNumberLines(run);
+    if (sheet && promote) run = promoteNumberLines(run);
     content = run;
     note.replaceChildren();
     note.hidden = !(py.length && !allowPython);

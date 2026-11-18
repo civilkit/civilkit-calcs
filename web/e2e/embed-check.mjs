@@ -282,6 +282,23 @@ const mOf = (t) => /Mmax = .*?= ([\d.]+) kN · m/.exec(t)?.[1] ?? null;
         const err = got.slice(n).find((x) => x.data.type === 'civilkit-error');
         check(!!err && !got.slice(n).some((x) => x.data.type === 'civilkit-results'), `civilkit-load ${JSON.stringify(bad).slice(0, 60)} is refused (${err?.data.errors})`);
     }
+    // The host's definitions stay definitions (no promotion unless asked), and the sheet's errors go with the results.
+    n = (await msgs()).length;
+    await send({ type: 'civilkit-load', source: '<!--sheet-->\nL_m: 5 m\nw_m: 14000 N/m\nw: w_m -> kN/m\nbad: L_m + w_m\nM: w*L_m^2/8 -> kN*m\n' });
+    got = await until(msgs, (m) => m.slice(n).some((x) => x.data.type === 'civilkit-results'));
+    const rdy = got.slice(n).find((x) => x.data.type === 'civilkit-ready');
+    const rs = got.slice(n).find((x) => x.data.type === 'civilkit-results');
+    check(rdy?.data.inputs.length === 0, `civilkit-load keeps the host's definitions as definitions, no inputs (${rdy?.data.inputs.map((i) => i.name)})`);
+    check(Array.isArray(rs?.data.errors) && rs.data.errors.some((x) => x.line === 5 && x.severity === 'error' && /nconsistent|nit/.test(x.message)), `civilkit-results carries the sheet's errors with their line (${JSON.stringify(rs?.data.errors)})`);
+    check(Math.abs(rs?.data.values.M?.value - 43.75) < 0.01, `and the good values (M ${rs?.data.values.M?.value})`);
+    n = (await msgs()).length;
+    await send({ type: 'civilkit-load', source: '<!--sheet-->\nL_m: 5 m\n', promote: true });
+    got = await until(msgs, (m) => m.slice(n).some((x) => x.data.type === 'civilkit-ready'));
+    check(got.slice(n).find((x) => x.data.type === 'civilkit-ready')?.data.inputs.map((i) => i.name).join() === 'L_m', 'promote: true turns the number lines into inputs');
+    n = (await msgs()).length;
+    await send({ type: 'civilkit-load', source: SHEET, promote: 'yes' });
+    got = await until(msgs, (m) => m.slice(n).some((x) => x.data.type === 'civilkit-error'), 20);
+    check(got.slice(n).some((x) => x.data.type === 'civilkit-error'), 'promote must be a boolean');
     // An attached file is readable by the sheet (#read).
     n = (await msgs()).length;
     await send({ type: 'civilkit-load', source: '<!--sheet-->\nk: ? 2\n', files: { 'data.csv': 'MSwyCjMsNA==' } });
