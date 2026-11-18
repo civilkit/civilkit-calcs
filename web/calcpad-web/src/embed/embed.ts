@@ -33,7 +33,7 @@ const DEFAULT_SAMPLE = 'template-simply-supported-beam';
 const params = new URLSearchParams(window.location.search);
 const editMode = params.get('embed') === 'edit';
 const sampleId = params.get('sample') || DEFAULT_SAMPLE;
-const themeParam = ((v) => (v === 'light' || v === 'dark' ? v : 'auto'))(params.get('theme'));
+let themeParam: 'light' | 'dark' | 'auto' = ((v) => (v === 'light' || v === 'dark' ? v : 'auto'))(params.get('theme'));
 const viewMode = ((v) => (v === 'input' || v === 'results' ? v : 'both'))(params.get('mode'));
 const hidden = new Set((params.get('hide') ?? '').split(',').map((s) => s.trim()));
 const allowPython = params.get('allowpython') === '1';
@@ -132,11 +132,38 @@ function prepare(html: string): string {
     const extra = '<base target="_blank"><style>html,body{overflow:hidden!important}</style><script>(function(){'
         + 'var last=0;function h(){var b=document.body;if(!b)return;var r=Math.ceil(b.getBoundingClientRect().bottom+(parseFloat(getComputedStyle(b).marginBottom)||0)+window.scrollY);'
         + 'if(r!==last){last=r;parent.postMessage({type:"civilkit-results-height",height:r},"*")}}'
-        + 'document.addEventListener("DOMContentLoaded",function(){h();new ResizeObserver(h).observe(document.body)});addEventListener("load",h)})()</script>';
+        + 'document.addEventListener("DOMContentLoaded",function(){h();new ResizeObserver(h).observe(document.body)});addEventListener("load",h);'
+        + 'addEventListener("message",function(e){if(e.source!==parent||!e.data||e.data.type!=="civilkit-body"||typeof e.data.html!=="string")return;document.body.innerHTML=e.data.html;h()})})()</script>';
     const i = html.search(/<head[^>]*>/i);
     if (i < 0) return extra + html;
     const end = html.indexOf('>', i) + 1;
     return html.slice(0, end) + extra + html.slice(end);
+}
+
+/** The results page split into what stays the same between renders (the head: styles and the KaTeX fonts, a few hundred kB) and the body.
+ *  When only the body changed and has no script, it is swapped into the page already loaded, so the fonts are not parsed again. */
+function splitPage(html: string): { head: string; body: string } | null {
+    const h = html.search(/<\/head>\s*<body/i);   // the real tags: the head's comments and scripts also mention them
+    if (h < 0) return null;
+    const b = html.indexOf('<body', h);
+    if (/<script/i.test(html.slice(b))) return null;
+    const open = html.indexOf('>', b) + 1;
+    const close = html.search(/<\/body>\s*<\/html>\s*$/i);
+    if (close < open) return null;
+    return { head: html.slice(0, open), body: html.slice(open, close) };
+}
+let shownHead: string | null = null;
+let frameReady = false;
+frame.addEventListener('load', () => { frameReady = true; });
+function showResults(html: string): void {
+    const parts = splitPage(html);
+    if (parts && frameReady && frame.contentWindow && shownHead === parts.head) {
+        frame.contentWindow.postMessage({ type: 'civilkit-body', html: parts.body }, '*');
+        return;
+    }
+    shownHead = parts ? parts.head : null;
+    frameReady = false;
+    frame.srcdoc = prepare(html);
 }
 
 window.addEventListener('message', (e) => {
@@ -157,7 +184,7 @@ async function render(): Promise<void> {
         if (!res.ok) throw new Error(await res.text());
         const errors = JSON.parse(decodeURIComponent(res.headers.get('X-Calcpad-Errors') ?? '%5B%5D')) as { sourceLine?: number; message?: string }[];
         lastErrors = errors.slice(0, 50).map((e) => ({ line: typeof e.sourceLine === 'number' && e.sourceLine > 0 ? e.sourceLine : null, message: String(e.message ?? '').slice(0, 300) }));
-        frame.srcdoc = prepare(images(await res.text()));
+        showResults(images(await res.text()));
         status.textContent = errors.length ? `Calculated, with ${errors.length} error${errors.length === 1 ? '' : 's'} in the sheet.` : 'Calculated.';
         if (framed && !again) await postResults();
     } catch (err) {
@@ -255,10 +282,22 @@ window.addEventListener('message', (e) => {
     if (!framed || e.source !== window.parent) return;
     const d = e.data as { type?: unknown; values?: unknown; source?: unknown; files?: unknown; name?: unknown; promote?: unknown };
     if (!d || typeof d !== 'object' || typeof d.type !== 'string') return;
+    if (d.type === 'civilkit-theme') {
+        const m = (d as { mode?: unknown }).mode;
+        if (m !== 'light' && m !== 'dark' && m !== 'auto') { toHost({ type: 'civilkit-error', errors: ['mode must be light, dark or auto'] }); return; }
+        themeParam = m;
+        paintTheme();
+        schedule(0);
+        return;
+    }
     if (d.type === 'civilkit-get') { if (lastResults) toHost(lastResults); return; }
     if (d.type === 'civilkit-load') {
         const c = checkLoad(d);
-        if (!c.ok) { toHost({ type: 'civilkit-error', errors: [c.error] }); return; }
+        if (!c.ok) {
+            toHost({ type: 'civilkit-error', errors: [c.error] });
+            status.textContent = `The text was not loaded: ${c.error}`;
+            return;
+        }
         loading = loading.then(async () => {
             try {
                 docId = c.name;
@@ -274,6 +313,7 @@ window.addEventListener('message', (e) => {
                 if (set.errors.length) toHost({ type: 'civilkit-error', errors: set.errors });
                 postReady();
                 await render();
+                toHost({ type: 'civilkit-loaded', sample: docId });
             } catch (err) {
                 toHost({ type: 'civilkit-error', errors: [`the text could not be loaded: ${String(err instanceof Error ? err.message : err).slice(0, 200)}`] });
             }
@@ -365,8 +405,8 @@ async function start(): Promise<void> {
 }
 
 function postReady(): void {
-    toHost({ type: 'civilkit-ready', sample: hostMode ? null : docId, inputs: inputs.map(({ name, kind, label, unit, value, min, max, step, options }) => ({ name, kind, label, unit, value, min, max, step, options })) });
+    toHost({ type: 'civilkit-ready', caps: ['load', 'loaded', 'errors', 'theme'], sample: hostMode ? null : docId, inputs: inputs.map(({ name, kind, label, unit, value, min, max, step, options }) => ({ name, kind, label, unit, value, min, max, step, options })) });
 }
 
-if (themeParam === 'auto') dark.addEventListener('change', () => { paintTheme(); schedule(0); });
+dark.addEventListener('change', () => { if (themeParam === 'auto') { paintTheme(); schedule(0); } });
 start().catch((err) => fail(`The sample could not be loaded (${String(err instanceof Error ? err.message : err).slice(0, 200)}).`));

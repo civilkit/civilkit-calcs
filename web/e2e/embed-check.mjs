@@ -271,6 +271,7 @@ const mOf = (t) => /Mmax = .*?= ([\d.]+) kN · m/.exec(t)?.[1] ?? null;
     const r0 = first.find((x) => x.data.type === 'civilkit-ready');
     check(r0?.data.sample === null && r0.data.inputs.length === 0, `?host=1 starts empty and says ready (${JSON.stringify(r0?.data)})`);
     check(!first.some((x) => x.data.type === 'civilkit-results'), '?host=1 calculates nothing before the host sends its text');
+    check(['load', 'loaded', 'errors', 'theme'].every((c) => r0?.data.caps?.includes(c)), `ready lists its capabilities (${r0?.data.caps})`);
     const SHEET = '<!--sheet-->\n# From the host\n\nL: ? 6 m [2 .. 12 step 0.5] | span\nw: ? 12 kN/m | load\nM_max = w*L^2/8\n';
     let n = (await msgs()).length;
     await send({ type: 'civilkit-load', source: SHEET, name: 'studio-beam' });
@@ -279,6 +280,7 @@ const mOf = (t) => /Mmax = .*?= ([\d.]+) kN · m/.exec(t)?.[1] ?? null;
     const res = got.slice(n).find((x) => x.data.type === 'civilkit-results');
     check(ready?.data.inputs.map((i) => i.name).join() === 'L,w' && ready.data.inputs[0].max === 12, `civilkit-load builds the form from the host's sheet (${ready?.data.inputs.map((i) => i.name)})`);
     check(res?.data.sample === 'studio-beam' && Math.abs(res.data.values.M_max?.value - 54) < 0.01, `and the results come back under the host's name (${res?.data.sample}, M_max ${res?.data.values.M_max?.value})`);
+    check(got.slice(n).some((x) => x.data.type === 'civilkit-loaded' && x.data.sample === 'studio-beam') || (await until(msgs, (m) => m.slice(n).some((x) => x.data.type === 'civilkit-loaded'))).length > 0, 'civilkit-loaded follows the first load');
     const ttl = await page.frameLocator('#f').locator('.ce-title').textContent();
     check(ttl === 'studio-beam', `the title shows the host's name (${ttl})`);
     n = (await msgs()).length;
@@ -286,6 +288,23 @@ const mOf = (t) => /Mmax = .*?= ([\d.]+) kN · m/.exec(t)?.[1] ?? null;
     got = await until(msgs, (m) => m.slice(n).some((x) => x.data.type === 'civilkit-results'));
     const res2 = got.slice(n).find((x) => x.data.type === 'civilkit-results');
     check(Math.abs(res2?.data.values.M_max?.value - 80) < 0.01, `civilkit-load with values: L = 8, w = 10 gives M_max = 80 (${res2?.data.values.M_max?.value})`);
+    // A re-render with the same styles swaps the body in place: the results document is not reloaded (its fonts stay parsed).
+    const rf = page.frameLocator('#f').locator('iframe.ce-frame');
+    await rf.evaluate((el) => { window.__loads = 0; el.addEventListener('load', () => { window.__loads++; }); });
+    n = (await msgs()).length;
+    await send({ type: 'civilkit-set', values: { L: 9 } });
+    got = await until(msgs, (m) => m.slice(n).some((x) => x.data.type === 'civilkit-results'));
+    const kept = await page.frameLocator('#f').locator('html').evaluate(() => window.__loads);
+    check(kept === 0 && Math.abs(got.slice(n).find((x) => x.data.type === 'civilkit-results').data.values.M_max?.value - 101.25) < 0.01, `a recalculation keeps the results document (fonts not reloaded) and shows the new value (reloads ${kept})`);
+    // civilkit-theme repaints the embed.
+    await send({ type: 'civilkit-theme', mode: 'dark' });
+    await page.waitForTimeout(600);
+    const th = await page.frameLocator('#f').locator('html').evaluate((el) => el.dataset.theme);
+    check(th === 'dark', `civilkit-theme dark switches the embed to dark (${th})`);
+    n = (await msgs()).length;
+    await send({ type: 'civilkit-theme', mode: 'blue' });
+    got = await until(msgs, (m) => m.slice(n).some((x) => x.data.type === 'civilkit-error'), 20);
+    check(got.slice(n).some((x) => x.data.type === 'civilkit-error'), 'civilkit-theme with an unknown mode is refused');
     for (const bad of [{ source: 5 }, { source: '' }, { source: SHEET, files: { '../x.csv': 'QQ==' } }, { source: SHEET, files: { 'a.csv': '***' } }, { source: SHEET, name: 'a b/c' }]) {
         n = (await msgs()).length;
         await send({ type: 'civilkit-load', ...bad });
@@ -293,6 +312,8 @@ const mOf = (t) => /Mmax = .*?= ([\d.]+) kN · m/.exec(t)?.[1] ?? null;
         const err = got.slice(n).find((x) => x.data.type === 'civilkit-error');
         check(!!err && !got.slice(n).some((x) => x.data.type === 'civilkit-results'), `civilkit-load ${JSON.stringify(bad).slice(0, 60)} is refused (${err?.data.errors})`);
     }
+    const shown = await page.frameLocator('#f').locator('.ce-status').textContent();
+    check(/not loaded/.test(shown ?? ''), `a refused load is shown in the embed (${shown})`);
     // The host's definitions stay definitions (no promotion unless asked), and the sheet's errors go with the results.
     n = (await msgs()).length;
     await send({ type: 'civilkit-load', source: '<!--sheet-->\nL_m: 5 m\nw_m: 14000 N/m\nw: w_m -> kN/m\nbad: L_m + w_m\nM: w*L_m^2/8 -> kN*m\n' });

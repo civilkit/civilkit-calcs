@@ -49,7 +49,9 @@ reader typed into that host's frame.
 | Message | Direction |
 |---|---|
 | `civilkit-embed-height {height}` | embed to host, on every layout change (ResizeObserver on the embed root) |
-| `civilkit-ready {sample, inputs}` | embed to host, once the form is built |
+| `civilkit-ready {caps, sample, inputs}` | embed to host, when the form is built; again after every `civilkit-load`, so a host answers the first one only (use `civilkit-loaded` to know a load finished). `caps` lists what this embed understands: `load`, `loaded`, `errors`, `theme` |
+| `civilkit-loaded {sample}` | embed to host, once a `civilkit-load` has been shown and calculated |
+| `civilkit-theme {mode}` | host to embed: `light`, `dark` or `auto` (follow the browser), as `?theme=` but after load; anything else is refused with `civilkit-error` |
 | `civilkit-results {sample, values}` | embed to host, after each calculation |
 | `civilkit-error {errors}` | embed to host, for a refused set |
 | `civilkit-set {values}` | host to embed: names must be inputs; numbers finite and within the slider bounds, or a number with a unit (`"5000 mm"`, `"8000 N/m"`), whose shape only is checked here: the engine converts it to the unit the input declares, applies the bounds after the conversion and refuses another dimension, which comes back in the next `civilkit-results` errors (calcpad-core `ui.rs`, `convert_override`; `tests/ui_override_units.rs`); a choice one of the option values or labels; a checkbox true, false, 1 or 0. At most 200 names a message. |
@@ -65,9 +67,9 @@ unless `allowpython=1`. Checked in `checkLoad`: `source` a non-empty string up t
 plain relative `.cpd/.txt/.csv/.xlsx/.xlsm` names (no leading slash, no `..`) to base64, 5,000,000 characters in all (they
 become the request's `extraFiles`, as a sample's assets do); `name` letters, digits, dot, dash, underscore, at most 60
 (it names the results' `sample` field and the engine's source path, and the title shows it). A refused load changes nothing
-and answers `civilkit-error`. Loads are queued and run in order; each clears the entered values, then applies `values` if
+and answers `civilkit-error`, and the reason is also shown in the embed's status line. Loads are queued and run in order; each clears the entered values, then applies `values` if
 given. `promote` (a boolean, default false) is the host's choice to have plain number lines of a sheet become editable inputs as they do for a sample; without it the host's definitions stay definitions and only the sheet's own `?` inputs are boxes. `civilkit-results` carries `errors: [{line, severity, message}]`: the errors the engine wrote into the page (a unit clash, an undefined name), `line` counted from 1 in the host's text, which cost one more engine run (with line anchors) after each calculation when framed. A load works in a framed embed only, from the parent only, like every other message; it works with any
-`sample` too (it replaces the sample). Nothing is stored: the text lives in the page until it is reloaded, so the host owns it.
+`sample` too (it replaces the sample). A re-render whose page head (styles, fonts) is unchanged and whose body has no script is swapped into the loaded results frame (`showResults`) instead of reloading it, which spares re-parsing the page's ~1.7 MB head on every recalculation. Nothing is stored: the text lives in the page until it is reloaded, so the host owns it.
 
 ## embed.js
 
