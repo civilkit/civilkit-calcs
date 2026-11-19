@@ -1,6 +1,7 @@
 import * as monaco from 'monaco-editor';
 import { SHEET_LANGUAGE, syncModelLanguage } from '../editor/sheet-language';
 import { isSheetText } from '../wasm/sheet';
+import { hostMode } from '../host/flag';
 
 export interface TabState {
     id: string;
@@ -188,6 +189,8 @@ export class TabManager {
      * returning its id. `title` overrides the default "Untitled-N" label.
      */
     newUntitled(content: string = '', title?: string): string {
+        // Host mode has one document: a new one replaces what is open (the host owns it and is told by civilkit-source).
+        if (hostMode && this.tabs.length) return this.replaceOnly(content, title ?? 'Untitled', null);
         let label = title;
         if (!label) {
             this._untitledCounter += 1;
@@ -203,6 +206,7 @@ export class TabManager {
      * activated instead, and `content` is ignored.
      */
     openFile(filePath: string, content: string): string {
+        if (hostMode && this.tabs.length) return this.replaceOnly(content, baseName(filePath), null);
         const existing = this.tabs.find(t => docFor(t.model).filePath === filePath);
         if (existing) {
             this.activate(existing.id);
@@ -289,6 +293,7 @@ export class TabManager {
      * the active tab closes, focus moves to the right neighbor, then left, then none.
      */
     close(id: string): void {
+        if (hostMode && this.tabs.length <= 1) return;   // the one document stays
         const idx = this.tabs.findIndex(t => t.id === id);
         if (idx < 0) return;
 
@@ -345,6 +350,7 @@ export class TabManager {
      * user must explicitly save to reconcile.
      */
     openDraft(opts: { filePath: string | null; title: string; content: string }): string {
+        if (hostMode && this.tabs.length) return this.replaceOnly(opts.content, opts.title, null);
         // A draft for a file session restore already reopened takes that tab over, rather
         // than adding a second tab for the same path.
         const existing = opts.filePath
@@ -420,6 +426,22 @@ export class TabManager {
     }
 
     // ---- Internals ----
+
+    /** Host mode: put new text and a new title into the one tab, as a clean document (nothing to save here), and say so. */
+    private replaceOnly(content: string, title: string, filePath: string | null): string {
+        const t = this.tabs[0];
+        const doc = docFor(t.model);
+        t.model.setValue(content);
+        syncModelLanguage(t.model);
+        doc.title = title;
+        doc.filePath = filePath;
+        doc.savedVersionId = t.model.getAlternativeVersionId();
+        t.dirty = false;
+        for (const l of doc.onChanged) l();
+        if (this._activeId !== t.id) this.activate(t.id);
+        else this.emit();
+        return t.id;
+    }
 
     private createTab(opts: { title: string; filePath: string | null; content: string }): InternalTab {
         const id = `${this.idPrefix}tab-${++this._seq}`;

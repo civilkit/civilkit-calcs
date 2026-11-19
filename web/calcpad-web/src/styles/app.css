@@ -1428,3 +1428,10 @@ select:focus,
   opacity: 0.6;
   color: var(--accent, #b7791f);
 }
+
+/* Host mode (?host=1): one document, owned by the host: no tab to add or close, no split. The one tab shows the host's name. */
+html[data-host] .tab-new,
+html[data-host] .tab-split,
+html[data-host] .group-close,
+html[data-host] .tab-close { display: none !important; }
+html[data-host] .tab { cursor: default; }

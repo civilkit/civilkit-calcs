@@ -78,7 +78,7 @@
                   <svg viewBox="0 0 16 16" aria-hidden="true"><path d="M4 2.5v11l9-5.5z" fill="currentColor"/></svg>
                 </button>
                 <button
-                  class="tab-action"
+                  class="tab-action tab-split"
                   :class="{ active: isSplit }"
                   @click="onToggleSplit"
                   :title="isSplit ? 'Merge editor groups' : `Split editor down${deskKey(' (Ctrl+\\)')}`"

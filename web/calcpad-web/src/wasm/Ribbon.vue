@@ -1,11 +1,11 @@
 <template>
   <div class="rb" role="toolbar" ref="root">
     <div class="rb-quick">
-      <button class="rb-file" data-ribbon-btn="file" :title="td('ribbon.file.title', undefined, 'File: recent worksheets, the library, samples, save and export')"
+      <button v-if="!hostMode" class="rb-file" data-ribbon-btn="file" :title="td('ribbon.file.title', undefined, 'File: recent worksheets, the library, samples, save and export')"
         @mousedown.prevent @click="fire(FILE, $event)">
         <svg class="rb-sm" viewBox="0 0 24 24" width="16" height="16" aria-hidden="true" v-html="ICONS_SMALL.menu"></svg><span>{{ btnLabel(FILE) }}</span>
       </button>
-      <button v-for="b in QUICK" :key="b.id" class="rb-q" :title="tip(btnTitle(b))" :aria-label="btnLabel(b)"
+      <button v-for="b in QUICK_VIEW" :key="b.id" class="rb-q" :title="tip(btnTitle(b))" :aria-label="btnLabel(b)"
         :data-ribbon-btn="b.id" @mousedown.prevent @click="fire(b, $event)">
         <svg class="rb-sm" viewBox="0 0 24 24" width="16" height="16" aria-hidden="true" v-html="ICONS_SMALL[b.icon!]"></svg>
       </button>
@@ -16,7 +16,7 @@
       </button>
     </div>
     <div class="rb-tabs" role="tablist">
-      <button v-for="t in RIBBON" :key="t.id" class="rb-tab" :class="{ on: t.id === active }" role="tab"
+      <button v-for="t in RIBBON_VIEW" :key="t.id" class="rb-tab" :class="{ on: t.id === active }" role="tab"
         :aria-selected="t.id === active" :aria-controls="'rb-panel'" :data-ribbon-tab="t.id" @click="selectTab(t.id)">{{ tabLabel(t) }}</button>
     </div>
     <div v-show="!folded" id="rb-panel" class="rb-panel" role="tabpanel" :aria-label="tabLabel(tab)" :data-ribbon-panel="active">
@@ -60,6 +60,7 @@
 <script setup lang="ts">
 import { computed, nextTick, onBeforeUnmount, onMounted, ref } from 'vue';
 import { GEAR, MORE, QUICK, RIBBON } from './ribbon-data';
+import { hostMode, HOST_HIDDEN_ACTIONS } from '../host/flag';
 import type { Entry, RibbonButton, RibbonGroup, Section } from './ribbon-data';
 import { ACCENT, ICONS_BIG, ICONS_SMALL } from './ribbon-icons';
 import './ribbon-icons.css';
@@ -72,6 +73,12 @@ import { btnKey, groupKey, sectionKey, tabKey } from './ribbon-i18n';
 import type { RibbonCtx } from './ribbon-actions';
 
 const props = defineProps<{ ctx: Omit<RibbonCtx, 'anchor'> }>();
+// Host mode: the host owns the file, so the buttons that open, create, save or list files are left out.
+const shownInHost = (b: RibbonButton): boolean => !(hostMode && b.action && HOST_HIDDEN_ACTIONS.has(b.action.split(':')[0]));
+const QUICK_VIEW = hostMode ? QUICK.filter(shownInHost) : QUICK;
+const RIBBON_VIEW = hostMode
+  ? RIBBON.map(t => ({ ...t, groups: t.groups.map(g => ({ ...g, buttons: g.buttons.filter(shownInHost) })).filter(g => g.buttons.length) }))
+  : RIBBON;
 const FILE: RibbonButton = { id: 'file', label: 'File', action: 'filemenu' };
 // Labels, tooltips and headings come from the catalogue by key (ribbon-i18n.ts); the English in ribbon-data.ts is the fallback.
 const btnLabel = (b: RibbonButton): string => td(btnKey(b.id, 'label'), undefined, b.label);
@@ -80,7 +87,7 @@ const tabLabel = (t: { id: string; label: string }): string => td(tabKey(t.id), 
 const groupName = (g: RibbonGroup): string => td(groupKey(active.value, g.name), undefined, g.name);
 const sectionLabel = (btnId: string, heading: string): string => td(sectionKey(btnId, heading), undefined, heading);
 const active = ref('math');
-const tab = computed(() => RIBBON.find(t => t.id === active.value) ?? RIBBON[0]);
+const tab = computed(() => RIBBON_VIEW.find(t => t.id === active.value) ?? RIBBON_VIEW[0]);
 const root = ref<HTMLElement | null>(null);
 type Pop = { id: string; sections: Section[]; style: Record<string, string>; filter: boolean; wide: boolean; loading: boolean };
 const pop = ref<Pop | null>(null);
@@ -111,7 +118,7 @@ const rawNote = (): string => ' ' + td('ribbon.rawNote', undefined, '(inserts ra
 const MAC = /Mac|iPhone|iPad/.test(navigator.platform);
 const tip = (t: string): string => (MAC ? t.replace(/\bCtrl\+/g, 'Cmd+') : t);
 const hasPop = (b: RibbonButton): boolean => !!(b.palette || b.more);
-const popLabel = computed(() => { const id = pop.value?.id; for (const t of RIBBON) for (const g of t.groups) for (const b of g.buttons) if (b.id === id) return btnLabel(b); return ''; });
+const popLabel = computed(() => { const id = pop.value?.id; for (const t of RIBBON_VIEW) for (const g of t.groups) for (const b of g.buttons) if (b.id === id) return btnLabel(b); return ''; });
 const isOn = (b: RibbonButton): boolean => (void tick.value, !!b.action && isActive(b.action, ctxWith(document.body)));
 
 type Cell = { big?: RibbonButton; stack?: RibbonButton[] };

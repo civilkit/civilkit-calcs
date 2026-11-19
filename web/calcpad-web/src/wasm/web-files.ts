@@ -18,6 +18,7 @@ import { isSheetText, withMarker } from './sheet';
 import { newSheet } from './sheet-ui';
 import type { FileLibrary } from './library';
 import { dbRequest, libraryPath, STORE_HANDLES } from './library';
+import { hostMode } from '../host/flag';
 import type { EngineFile } from './transport';
 
 /** The parts of calcpad-web's TabManager this module uses. */
@@ -77,6 +78,7 @@ function readRecent(): RecentEntry[] {
 }
 
 function writeRecent(list: RecentEntry[]): void {
+    if (hostMode) return;   // host mode keeps no list of files: the host owns the document
     try {
         localStorage.setItem(RECENT_KEY, JSON.stringify(list.slice(0, MAX_RECENT)));
     } catch {
@@ -127,6 +129,7 @@ export class WebFiles {
     install(): void {
         this.installButton();
         window.addEventListener('keydown', e => this.onKey(e), true);
+        if (hostMode) return;   // no dropping a file onto the page: the host owns the document
         document.addEventListener('dragover', e => {
             if (e.dataTransfer?.types.includes('Files')) {
                 e.preventDefault();
@@ -173,7 +176,9 @@ export class WebFiles {
     async onFilesWritten(files: EngineFile[]): Promise<void> {
         for (const f of files) {
             const changed = await this.o.library.put(f.path, f.data);
-            if (changed) {
+            if (changed && hostMode) {
+                this.o.log('info', `#write: ${baseName(f.path)} is kept for this session only (the host owns the files).`);
+            } else if (changed) {
                 download(baseName(f.path), f.data as BlobPart);
                 this.o.log('info', `#write: ${baseName(f.path)} downloaded and kept in the library.`);
             }
@@ -187,6 +192,7 @@ export class WebFiles {
     }
 
     async open(): Promise<void> {
+        if (hostMode) return;
         if (picker.showOpenFilePicker) {
             let handles: Handle[];
             try {
@@ -267,6 +273,7 @@ export class WebFiles {
     }
 
     async save(saveAs = false): Promise<boolean> {
+        if (hostMode) { window.dispatchEvent(new Event('civilkit-host-save')); return true; }   // host.ts answers with civilkit-save-request
         const tabs = this.o.tabs();
         const tab = tabs.activeTab;
         if (!tab) return false;
@@ -328,6 +335,7 @@ export class WebFiles {
         if (!(e.ctrlKey || e.metaKey) || e.altKey) return;
         const key = e.key.toLowerCase();
         if (key === 'o' && !e.shiftKey) {
+            if (hostMode) return;
             e.preventDefault();
             e.stopPropagation();
             void this.open();

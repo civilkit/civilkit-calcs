@@ -2,9 +2,14 @@
 // tab keeps running the build it loaded. This tells the person, and lets them reload when it suits them
 // (never on its own, so unsaved work is not lost).
 
+import { hostMode } from './host/flag';
+import { toHost } from './host/channel';
+
 const ID = 'cprs-update-notice';
 
 function show(): void {
+    // Host mode: never a notice with a Reload button inside the host's frame (a reload could drop an unsent edit); the host is told and decides.
+    if (hostMode) { toHost({ type: 'civilkit-update-available' }); return; }
     if (document.getElementById(ID)) return;
     const box = document.createElement('div');
     box.id = ID;

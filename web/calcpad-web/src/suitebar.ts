@@ -4,9 +4,12 @@
  * element is also hidden by CSS below 900px, and the script is not even loaded until the
  * window is that wide).
  */
+import { hostMode } from './host/flag';
+
 const WIDE = '(min-width: 900px)';
 
 export function mountSuiteBar(): void {
+    if (hostMode) return;   // inside another CivilKit program the page has the program's own bar
     if (import.meta.env.VITE_STORE_BUILD === '1') return;
     if (typeof (window as unknown as { __TAURI_INTERNALS__?: unknown }).__TAURI_INTERNALS__ !== 'undefined') return;
     if (window.matchMedia('(display-mode: standalone)').matches) return;

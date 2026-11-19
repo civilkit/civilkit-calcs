@@ -70,6 +70,8 @@ import type { TabManager } from './tabs/tab-manager';
 import { toDisplayLogLevel } from 'calcpad-frontend';
 import type { UiControl, DefaultRow, CalcpadLogLevel, DisplayLogLevel } from 'calcpad-frontend';
 import { mountSuiteBar } from './suitebar';
+import { hostMode } from './host/flag';
+import { installHost } from './host/host';
 import { initLanguage, onLanguageChanged, td } from './i18n';
 import { InputDock, dockHideStyle, dockInputsFromHtml, type DockInput } from './input-dock';
 import { parseInputs } from './embed/inputs';
@@ -83,6 +85,7 @@ import './embed/form.css';
 import './styles/app.css';
 import './styles/editor-nav.css';
 applyEarlyTheme();
+if (hostMode) document.documentElement.dataset.host = '1';   // CSS hides what implies the app owns the document (styles/app.css)
 mountSuiteBar();
 
 // Monaco worker setup - must run before editor creation
@@ -327,7 +330,7 @@ async function bootstrap(): Promise<void> {
     if (!isTauri) {
         setTranslator(td);
         await initLanguage();
-        mountLanguagePrompt();
+        if (!hostMode) mountLanguagePrompt();   // a frame inside another program does not ask about the browser's language
     }
 
     // The base message bridge's handleGoToLine looks up the editor via
@@ -1292,7 +1295,7 @@ async function bootstrap(): Promise<void> {
 
     // Seed the first tab. On web we put the sample in it; on desktop it's
     // an empty Untitled-1 ready to receive an Open or paste.
-    primaryGroup.tabs.newUntitled(isTauri ? '' : getSampleContent());
+    primaryGroup.tabs.newUntitled(isTauri || hostMode ? '' : getSampleContent());   // host mode: blank until the host sends its document
 
     // ---- Split / merge / focus wiring ----
     let confirmCloseGroup: (g: EditorGroup) => Promise<boolean> = async () => true;
@@ -1301,6 +1304,7 @@ async function bootstrap(): Promise<void> {
     let groupSeq = 0;
 
     async function splitEditor(): Promise<void> {
+        if (hostMode) return;   // one document
         if (groups.size >= 2) {
             activeGroup.editor.focus();
             return;
@@ -1880,6 +1884,7 @@ async function bootstrap(): Promise<void> {
     // Preview right-click "Open Full HTML": raw HTML in a new unsaved tab in
     // the same group, mirroring vscode-calcpad's "View Webview Source".
     appInstance.onOpenFullHtmlRequest = (groupId: string, html: string) => {
+        if (hostMode) return;   // it would replace the host's document
         groups.get(groupId)?.tabs.newUntitled(html, 'HTML Preview Source.html');
     };
     // Double-click a rendered line: the preview edits that source line in place.
@@ -2363,7 +2368,29 @@ async function bootstrap(): Promise<void> {
     // calcpad-rs: open, save, recent files, print and the #include/#read library in the browser.
     if (!isTauri) mountRibbon(webFiles = installWebFiles((window as any).calcpadEngine, { tabs: () => (window as any).calcpadTabs, appendOutput: (l, m) => appInstance.appendOutput(l, m), bridge: activeBridge, showSidebarTab: (id: string) => sidebarInstance.switchTab?.(id) }), { app: appInstance, bridge: activeBridge, showSidebarTab: (id: string) => sidebarInstance.switchTab?.(id) });
     // The browser keeps no copy of unsaved text across a reload, so ask before the page goes.
-    if (!isTauri) installBeforeUnloadGuard(() => [...groups.values()].some(g => g.tabs.anyDirty()));
+    if (!isTauri && !hostMode) installBeforeUnloadGuard(() => [...groups.values()].some(g => g.tabs.anyDirty()));   // host mode: the host holds the text, nothing is lost by leaving
+
+    // Host mode: the document in and out over postMessage (src/host/host.ts, docs/embedding.md "Host mode (full app)").
+    if (hostMode) {
+        installHost({
+            tabs: () => primaryGroup.tabs,
+            library: (window as any).calcpadFiles?.library,
+            settings: () => activeBridge.getSettings(),
+            bridge: activeBridge,
+            setTheme: (mode) => setAppTheme(mode === 'light' ? 'Light' : mode === 'dark' ? 'Dark' : 'System'),
+            showPreview: () => { if (!appInstance.isPreviewVisible()) appInstance.togglePreview?.(); },
+            uiValues: {
+                key: () => activeUiDocKey(),
+                get: () => { syncUiOverrides(activeGroup, activeGroup.editor.getValue()); return uiOverrides.toRecord(activeUiDocKey()) ?? {}; },
+                reset: (values) => {
+                    uiOverrides.replace(activeUiDocKey(), values);
+                    uiOverridesDirty.delete(activeUiDocKey());
+                    refreshUiDirtyIndicator();
+                    void refreshPreviewFor(activeGroup);
+                },
+            },
+        });
+    }
 
     // Tauri-specific: native menu clicks + file operations
     if (isTauri && tauriBridge) {
@@ -3466,7 +3493,7 @@ bootstrap().catch((err) => {
 if (import.meta.env.PROD && import.meta.env.VITE_PLATFORM === 'web' && 'serviceWorker' in navigator && !location.search.includes('nosw')) {
     const registerWorker = () => {
         navigator.serviceWorker.register(`${import.meta.env.BASE_URL}sw.js`)
-            .then(reg => watchForUpdates(reg))
+            .then(reg => watchForUpdates(reg))   // host mode: the notice becomes civilkit-update-available (update-notice.ts)
             .catch(() => { /* private window or blocked: the app works online as before */ });
     };
     // This module is imported by src/boot.ts, so the page may have finished loading before it runs.

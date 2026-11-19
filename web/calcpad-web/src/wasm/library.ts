@@ -14,6 +14,8 @@ export interface LibraryFile {
     modified: number;
 }
 
+import { hostMode } from '../host/flag';
+
 const DB_NAME = 'calcpad-rs';
 const DB_VERSION = 1;
 export const STORE_LIBRARY = 'library';
@@ -47,6 +49,8 @@ export async function dbRequest<T>(
     mode: IDBTransactionMode,
     make: (s: IDBObjectStore) => IDBRequest<T>,
 ): Promise<T | undefined> {
+    // Host mode keeps nothing in the browser's database and reads nothing from it: the library works from memory.
+    if (hostMode) return undefined;
     const db = await openDb();
     if (!db) return undefined;
     try {
@@ -77,7 +81,8 @@ export class FileLibrary {
     }
 
     private async restore(): Promise<void> {
-        const stored = await dbRequest<LibraryFile[]>(STORE_LIBRARY, 'readonly', s => s.getAll() as IDBRequest<LibraryFile[]>);
+        // Host mode starts with an empty library: the document must calculate the same wherever it is opened, not by what this browser holds.
+        const stored = hostMode ? [] : await dbRequest<LibraryFile[]>(STORE_LIBRARY, 'readonly', s => s.getAll() as IDBRequest<LibraryFile[]>);
         for (const f of stored ?? []) {
             if (f && typeof f.path === 'string' && f.data instanceof Uint8Array) this.files.set(f.path, f);
         }
@@ -126,7 +131,7 @@ export class FileLibrary {
             added.push(file);
         }
         const removed = removePaths.map(libraryPath).filter(p => this.files.delete(p));
-        const db = await openDb();
+        const db = hostMode ? null : await openDb();
         if (db) {
             await new Promise<void>((resolve) => {
                 try {
