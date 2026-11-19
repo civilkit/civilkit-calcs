@@ -147,7 +147,7 @@ Messages go to the parent window only, and the app answers to its parent only (`
 | `font-ui`, `font-mono` | `--ck-font`, `--ck-mono` |
 | `bg-3`, `line-2` | checked, then unused (no counterpart in the app) |
 
-The editor's own colours follow the light or dark `mode`, not the tokens.
+The editor's colours follow the host tokens (background, text, panel, accent, line); the syntax colours stay the app's own.
 
 ## Privacy
 
