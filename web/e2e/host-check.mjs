@@ -8,6 +8,7 @@
 //   4. Save asks the host (civilkit-save-request) and downloads nothing;
 //   5. nothing of the document is stored: no recent files, no session, no IndexedDB database; a reload starts blank;
 //   6. civilkit-theme: mode, Studio's tokens as inline --ck-* overrides, bad values refused, clearing;
+//   6b. civilkit-command: every id shows its pane or dialog, refusals, Samples > Open without a question, tokens reach Monaco and the dialogs;
 //   7. the plain app (no ?host) still has its File menu, tabs and suite bar logic; no console errors anywhere.
 import { spawn } from 'node:child_process';
 import { createServer } from 'node:http';
@@ -237,6 +238,107 @@ const studio = { '--bg-0': '#0c0e12', '--bg-1': '#14171d', '--bg-2': '#1b1f27', 
 got = await exchange({ type: 'civilkit-theme', mode: 'dark', tokens: studio }, () => true, 1);
 await settle(400);
 check((await prop('--ck-panel')) === '#14171d' && (await prop('--ck-accent-soft')) === '#1c3450' && (await prop('--ck-mono')) === 'ui-monospace, SF Mono, Menlo, Consolas, monospace' && types(got, 'civilkit-error').length === 0, "Studio's own dark token map (leading -- and unknown keys included) is accepted");
+
+// ---- 6b. civilkit-command: the host's own menus reach the app's features ------------------------------------------------
+{
+    const COMMANDS = ['samples', 'export', 'word', 'excel', 'pdf', 'showcompiled', 'symbolic', 'find', 'undo', 'redo', 'calculate', 'settings', 'insert', 'variables', 'errors', 'contents', 'format', 'preview', 'unwrapped', 'inputform', 'report', 'shortcuts'];
+    check(ready?.data.caps.includes('command') && JSON.stringify(ready.data.commands) === JSON.stringify(COMMANDS), `ready lists the command ids and the command cap (${JSON.stringify(ready?.data.commands)})`);
+    const SHEET2 = '<!--sheet-->\n# Commands\n\nL: ? 6 m [2 .. 12 step 0.5]\nA = L*2\n';
+    await exchange({ type: 'civilkit-load', source: SHEET2, name: 'cmd-doc', revision: 50 }, (l) => types(l, 'civilkit-loaded').length > 0);
+    await settle(600);
+    const closeAll = () => app().evaluate(() => { document.getElementById('cprs-dialog')?.remove(); document.querySelector('.cprs-samples-backdrop')?.remove(); document.querySelector('[data-testid=compiled-view]')?.closest('[role=dialog], .cprs-panel, div[id]')?.remove?.(); });
+    const dialogs = () => app().evaluate(() => [...document.querySelectorAll('[role=dialog]')].map((d) => d.getAttribute('aria-label')));
+    const run = async (id) => {
+        const n = (await msgs()).length;
+        await send({ type: 'civilkit-command', id });
+        await settle(900);
+        return types((await msgs()).slice(n), 'civilkit-error');
+    };
+    // Each id does something visible.
+    let errs = await run('samples');
+    check(errs.length === 0 && await until(() => app().evaluate(() => !!document.querySelector('.cprs-samples')), (v) => v, 20), 'samples opens the Samples browser');
+    // Open in the browser: no "replace your sheet?" question, the one document is replaced, the host hears it as an edit.
+    const dialogsSeen = [];
+    page.on('dialog', (d) => { dialogsSeen.push(d.message()); void d.dismiss(); });
+    await app().evaluate(() => (document.querySelector('.cprs-s-item') ).click());
+    await app().waitForFunction(() => !document.querySelector('.cprs-s-open').disabled, null, { timeout: 20000 });
+    const before = await editorText();
+    const nS = (await msgs()).length;
+    await app().evaluate(() => document.querySelector('.cprs-s-open').click());
+    await until(editorText, (t) => t !== before && t.length > 0, 60);
+    await settle(900);
+    const afterText = await editorText();
+    const nowDialogs = await app().evaluate(() => ({ samples: !!document.querySelector('.cprs-samples'), confirm: [...document.querySelectorAll('[role=dialog],[role=alertdialog]')].filter((d) => /replace|discard|overwrite|unsaved/i.test(d.textContent ?? '')).length, tabs: document.querySelectorAll('.tab-strip .tab').length }));
+    const srcMsgs = types((await msgs()).slice(nS), 'civilkit-source');
+    check(afterText !== before && afterText.length > 0 && !nowDialogs.samples && nowDialogs.confirm === 0 && dialogsSeen.length === 0 && nowDialogs.tabs === 1, `Samples > Open replaces the document without a question and still one tab (${JSON.stringify({ ...nowDialogs, native: dialogsSeen.length })})`);
+    check(srcMsgs.length === 1 && srcMsgs[0].data.source === afterText && srcMsgs[0].data.revision > 50, `the host hears the sample as an edit: civilkit-source with its text (revision ${srcMsgs[0]?.data.revision}, ${srcMsgs.length} message)`);
+    await exchange({ type: 'civilkit-load', source: SHEET2, name: 'cmd-doc', revision: 60 }, (l) => types(l, 'civilkit-loaded').length > 0);
+    await settle(600);
+
+    errs = await run('export');
+    check(errs.length === 0 && (await dialogs()).includes('Export'), 'export shows the Export pane');
+    errs = await run('showcompiled');
+    check(errs.length === 0 && await app().evaluate(() => !!document.querySelector('[data-testid=compiled-view]')), 'showcompiled shows the compiled Calcpad');
+    await closeAll();
+    errs = await run('symbolic');
+    check(errs.length === 0 && (await dialogs()).includes('Symbolic algebra'), 'symbolic opens the symbolic algebra dialog');
+    await closeAll();
+    errs = await run('find');
+    check(errs.length === 0 && await app().evaluate(() => !!document.querySelector('.find-widget.visible') || !!document.querySelector('[aria-label="Find / Replace"]')), 'find opens Find / Replace');
+    errs = await run('settings');
+    check(errs.length === 0 && (await dialogs()).includes('Settings'), 'settings opens the Settings pane');
+    for (const [id, label] of [['insert', 'Insert'], ['variables', 'Variables'], ['contents', 'Contents']]) {
+        errs = await run(id);
+        const tab = await app().evaluate((l) => [...document.querySelectorAll('[class*=tab][class*=active], [aria-selected=true]')].some((e) => (e.getAttribute('data-tab') || e.textContent || '').trim().startsWith(l)), label);
+        check(errs.length === 0 && tab, `${id} shows the ${label} sidebar tab`);
+    }
+    for (const [id, label] of [['errors', 'Errors and warnings'], ['format', 'Prettify'], ['shortcuts', 'Keyboard shortcuts']]) {
+        errs = await run(id);
+        check(errs.length === 0 && (await dialogs()).includes(label), `${id} shows "${label}"`);
+    }
+    await closeAll();
+    for (const id of ['calculate', 'preview', 'unwrapped', 'inputform', 'report']) {
+        errs = await run(id);
+        check(errs.length === 0, `${id} runs without an error`);
+    }
+    await run('preview');
+    // Undo reverts an edit made in the editor.
+    await app().evaluate(() => { const e = window.calcpadActiveEditor; e.pushUndoStop(); e.executeEdits('t', [{ range: e.getModel().getFullModelRange(), text: 'x = 1\n' }]); e.pushUndoStop(); });
+    check((await editorText()) === 'x = 1\n', 'an edit is made in the editor');
+    errs = await run('undo');
+    check(errs.length === 0 && (await editorText()) === SHEET2, 'undo reverts it');
+    errs = await run('redo');
+    check(errs.length === 0 && (await editorText()) === 'x = 1\n', 'redo brings it back');
+    // Refusals: an unknown id, a missing id, and a command the document cannot take now.
+    errs = await run('nope');
+    check(errs.length === 1 && /unknown command/.test(errs[0].data.errors[0]), `an unknown id is refused (${errs[0]?.data.errors})`);
+    errs = await run(undefined);
+    check(errs.length === 1 && /unknown command/.test(errs[0].data.errors[0]), 'a command without an id is refused');
+    errs = await run('constructor');
+    check(errs.length === 1 && /unknown command/.test(errs[0].data.errors[0]), 'an id from Object.prototype is refused');
+    await exchange({ type: 'civilkit-load', source: 'a = 1\n', name: 'plain', revision: 70 }, (l) => types(l, 'civilkit-loaded').length > 0);
+    errs = await run('showcompiled');
+    check(errs.length === 1 && /cannot run.*not a sheet/.test(errs[0].data.errors[0]), `showcompiled on a plain worksheet says why it cannot run (${errs[0]?.data.errors})`);
+    // A command from a frame that is not the parent is ignored.
+    const nI = (await msgs()).length;
+    await page.evaluate(() => { const f = document.createElement('iframe'); f.srcdoc = '<script>parent.frames[0].postMessage({type:"civilkit-command",id:"samples"},"*")<\/script>'; document.body.append(f); });
+    await settle(900);
+    check(!(await app().evaluate(() => !!document.querySelector('.cprs-samples'))) && types((await msgs()).slice(nI), 'civilkit-error').length === 0, 'a command from a frame that is not the parent is ignored');
+
+    // The host's tokens reach Monaco and the dialogs (the Samples dialog reads --vscode-* which come from --ck-*).
+    await send({ type: 'civilkit-theme', mode: 'dark', tokens: { 'bg-1': '#123456', 'txt-0': '#fedcba' } });
+    await settle(900);
+    const mon = await app().evaluate(() => { const bg = document.querySelector('.monaco-editor .monaco-editor-background'); return bg ? getComputedStyle(bg).backgroundColor : null; });
+    check(mon === 'rgb(18, 52, 86)', `Monaco follows the host's panel colour (${mon})`);
+    await run('samples');
+    const dlgBg = await app().evaluate(() => { const d = document.querySelector('.cprs-samples'); return d ? getComputedStyle(d).backgroundColor : null; });
+    check(dlgBg === 'rgb(18, 52, 86)', `and so does the Samples dialog (${dlgBg})`);
+    await closeAll();
+    await send({ type: 'civilkit-theme', mode: 'dark' });
+    await settle(900);
+    const mon2 = await app().evaluate(() => { const bg = document.querySelector('.monaco-editor .monaco-editor-background'); return bg ? getComputedStyle(bg).backgroundColor : null; });
+    check(mon2 !== 'rgb(18, 52, 86)', `clearing the tokens gives Monaco its own theme back (${mon2})`);
+}
 
 // ---- 7. the plain app ---------------------------------------------------------------------------------------------
 const plain = await context.newPage();
