@@ -340,8 +340,100 @@ check((await prop('--ck-panel')) === '#14171d' && (await prop('--ck-accent-soft'
     check(mon2 !== 'rgb(18, 52, 86)', `clearing the tokens gives Monaco its own theme back (${mon2})`);
 }
 
+// ---- 6c. civilkit-insert and civilkit-patch: the host edits the open document -----------------------------------------------
+{
+    check(['insert', 'patch'].every((c) => ready.data.caps.includes(c)), `ready lists the caps insert and patch (${JSON.stringify(ready?.data.caps)})`);
+    const DOC = '<!--sheet-->\na: 1 m\nb: 2 m\nc: 3 m\n';
+    // The revision the next civilkit-source must have: the host's, then one more for each source seen since (an undo is an edit too).
+    let cur = 0;
+    let mark = 0;
+    const sync = async () => { const l = types((await msgs()).slice(mark), 'civilkit-source'); if (l.length) cur = l.at(-1).data.revision; };
+    const load = async (rev) => { const l = await exchange({ type: 'civilkit-load', source: DOC, name: 'edits', revision: rev }, (x) => types(x, 'civilkit-loaded').length > 0); await settle(500); cur = rev; mark = (await msgs()).length; return l; };
+    const ed = (fn, arg) => app().evaluate(fn, arg);
+    const setSel = (a) => ed((r) => { const e = window.calcpadActiveEditor; e.setSelection({ startLineNumber: r[0], startColumn: r[1], endLineNumber: r[2], endColumn: r[3] }); e.focus(); }, a);
+    const pos = () => ed(() => { const p = window.calcpadActiveEditor.getPosition(); return [p.lineNumber, p.column]; });
+    const undo = async () => { await ed(() => window.calcpadActiveEditor.trigger('test', 'undo', null)); await settle(600); await sync(); };
+    /** Sends a message, returns the civilkit-source and civilkit-error messages that follow. */
+    async function edit(m, wantSource = true) {
+        const l = await exchange(m, (x) => (wantSource ? types(x, 'civilkit-source').length > 0 : types(x, 'civilkit-error').length > 0));
+        await settle(wantSource ? 400 : 100);
+        const expect = cur + 1;
+        await sync();
+        return { source: types(l, 'civilkit-source'), error: types(l, 'civilkit-error'), expect };
+    }
+
+    // insert at a caret at the start of a line: its own line, caret after it, one source, one undo step
+    await load(200);
+    await setSel([3, 1, 3, 1]);
+    let r = await edit({ type: 'civilkit-insert', text: 'x: 9 m\n' });
+    check((await editorText()) === '<!--sheet-->\na: 1 m\nx: 9 m\nb: 2 m\nc: 3 m\n', `insert at the start of a line puts the text there (${JSON.stringify(await editorText())})`);
+    check(JSON.stringify(await pos()) === '[4,1]', `the caret is after the inserted text (${JSON.stringify(await pos())})`);
+    check(r.source.length === 1 && r.source[0].data.revision === r.expect && r.source[0].data.source === await editorText(), `a civilkit-source follows at the next revision (${r.source.map((x) => x.data.revision)})`);
+    await undo();
+    check((await editorText()) === DOC, 'one undo restores the text before the insert');
+    check(r.error.length === 0, 'no error for a good insert');
+
+    // mid-line: a line break first, and the text ends with one
+    await setSel([2, 3, 2, 3]);
+    r = await edit({ type: 'civilkit-insert', text: 'y: 5 m' });
+    check((await editorText()) === '<!--sheet-->\na:\ny: 5 m\n 1 m\nb: 2 m\nc: 3 m\n', `insert mid-line goes on its own line (${JSON.stringify(await editorText())})`);
+    check(r.source.length === 1 && r.source[0].data.revision === r.expect, `and is the next revision (${r.source.map((x) => x.data.revision)})`);
+    await undo();
+    check((await editorText()) === DOC, 'one undo restores it');
+
+    // a selection is replaced
+    await setSel([3, 1, 3, 7]);
+    r = await edit({ type: 'civilkit-insert', text: 'z: 7 m' });
+    check((await editorText()) === '<!--sheet-->\na: 1 m\nz: 7 m\n\nc: 3 m\n', `insert replaces the selection (${JSON.stringify(await editorText())})`);
+    await undo();
+    check((await editorText()) === DOC, 'and one undo restores the selected text');
+
+    // refused inserts change nothing
+    for (const bad of [{ text: 5 }, { text: '' }, { text: 'x'.repeat(100001) }, {}]) {
+        r = await edit({ type: 'civilkit-insert', ...bad }, false);
+        check(r.error.length === 1 && /^insert:/.test(r.error[0].data.errors[0]) && (await editorText()) === DOC, `civilkit-insert ${JSON.stringify(bad).slice(0, 30)} is refused (${r.error[0]?.data.errors})`);
+    }
+
+    // patch: two edits, one undo step, no cursor jump
+    await load(300);
+    await setSel([4, 3, 4, 3]);                              // inside "b: 2 m"... line 4 is c: 3 m
+    const before = await pos();
+    r = await edit({ type: 'civilkit-patch', edits: [{ find: 'a: 1 m', replace: 'a: 10 m' }, { find: 'c: 3 m', replace: 'c: 30 m' }] });
+    check((await editorText()) === '<!--sheet-->\na: 10 m\nb: 2 m\nc: 30 m\n', `patch applies both edits (${JSON.stringify(await editorText())})`);
+    check(r.source.length === 1 && r.source[0].data.revision === r.expect && r.error.length === 0, `one civilkit-source at the next revision, no error (${r.source.map((x) => x.data.revision)})`);
+    check(JSON.stringify(await pos()) === JSON.stringify(before), `the caret did not jump (${JSON.stringify(before)} -> ${JSON.stringify(await pos())})`);
+    await undo();
+    check((await editorText()) === DOC, 'one undo reverts both edits');
+
+    // a caret after the patched text keeps its place relative to the text (shifts with it)
+    await setSel([4, 7, 4, 7]);                              // end of "c: 3 m"
+    await edit({ type: 'civilkit-patch', edits: [{ find: 'a: 1 m', replace: 'a: 1000 m' }] });
+    check(JSON.stringify(await pos()) === '[4,7]' && (await ed(() => { const e = window.calcpadActiveEditor; return e.getModel().getLineContent(e.getPosition().lineNumber); })) === 'c: 3 m', 'a caret in unchanged text stays on the same text');
+    await undo();
+
+    // refused edits are reported, the valid one still applies
+    await load(400);
+    r = await edit({ type: 'civilkit-patch', edits: [{ find: 'b: 2 m', replace: 'b: 20 m' }, { find: 'nothing here', replace: 'x' }, { find: ' m', replace: ' mm' }, { find: '', replace: 'x' }, { find: 'a: 1 m', replace: 7 }] });
+    const errs = r.error[0]?.data.errors ?? [];
+    check((await editorText()) === '<!--sheet-->\na: 1 m\nb: 20 m\nc: 3 m\n', `the valid edit applies and the others do not (${JSON.stringify(await editorText())})`);
+    check(errs.length === 4 && errs.some((e) => /"nothing here" matched 0 times/.test(e)) && errs.some((e) => /" m" matched 4 times|" m" matched 3 times/.test(e)) && errs.some((e) => /edit 4 has no find text/.test(e)) && errs.some((e) => /edit 5 .*no replace text/.test(e)), `one civilkit-error names each refused edit (${JSON.stringify(errs)})`);
+    check(r.source.length === 1 && r.source[0].data.revision === r.expect, `the source of the partial patch is the next revision (${r.source.map((x) => x.data.revision)})`);
+
+    // overlapping matches: the later one is refused
+    await load(500);
+    r = await edit({ type: 'civilkit-patch', edits: [{ find: 'a: 1 m\nb', replace: 'A' }, { find: 'b: 2 m', replace: 'B' }] });
+    check((await editorText()) === '<!--sheet-->\nA: 2 m\nc: 3 m\n' && (r.error[0]?.data.errors ?? []).some((e) => /overlaps an earlier edit/.test(e)), `an overlapping later edit is refused (${JSON.stringify(await editorText())}, ${JSON.stringify(r.error[0]?.data.errors)})`);
+
+    // whole-message refusals change nothing
+    await load(600);
+    for (const bad of [{ edits: 'x' }, { edits: [] }, { edits: Array.from({ length: 501 }, () => ({ find: 'a', replace: 'b' })) }, { edits: [{ find: 'x'.repeat(100001), replace: '' }] }, {}]) {
+        r = await edit({ type: 'civilkit-patch', ...bad }, false);
+        check(r.error.length === 1 && /^patch:/.test(r.error[0].data.errors[0]) && (await editorText()) === DOC && r.source.length === 0, `civilkit-patch ${JSON.stringify(bad).slice(0, 30)} is refused whole (${r.error[0]?.data.errors})`);
+    }
+}
+
 // ---- 7. the plain app ---------------------------------------------------------------------------------------------
-const plain = await context.newPage();
+const plain =await context.newPage();
 onConsole(plain);
 await plain.goto(`${origin}/?nosw`);
 await plain.waitForFunction(() => !!window.calcpadActiveEditor && !!document.querySelector('#cprs-ribbon .rb-quick'), null, { timeout: 60000 });
