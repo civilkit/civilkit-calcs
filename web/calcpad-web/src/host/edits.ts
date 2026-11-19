@@ -3,19 +3,28 @@
 
 const MAX_TEXT = 100_000;       // characters of one inserted text, one find or one replace
 const MAX_EDITS = 500;
+const SHEET_MARKER = /^\uFEFF?<!--sheet-->[ \t\r]*$/;
 const MAX_PATCH_TOTAL = 1_000_000;
 
 /** A range of the document (offsets from 0, end exclusive) and its new text. */
 export interface PlannedEdit { start: number; end: number; text: string }
 
 /** `civilkit-insert {text}`: the edit that puts `text` at the selection (start..end offsets, equal for a caret). A caret in the middle of a line gets a line
- *  break first, and the text always ends with one, so the text on either side is never glued on. Line ends in `text` become \n (Monaco converts them
+ *  break first, and the text always ends with one, so the text on either side is never glued on. In a sheet an insert on or above the `<!--sheet-->` line goes on the line after it. Line ends in `text` become \n (Monaco converts them
  *  to the document's own). */
 export function planInsert(doc: string, selStart: number, selEnd: number, raw: unknown): { ok: true; edit: PlannedEdit } | { ok: false; error: string } {
     if (typeof raw !== 'string') return { ok: false, error: 'insert: text must be a string' };
     if (raw.length > MAX_TEXT) return { ok: false, error: `insert: text is over ${MAX_TEXT} characters` };
     if (!raw) return { ok: false, error: 'insert: text is empty' };
     const body = raw.replace(/\r\n?/g, '\n');
+    // A sheet starts with its `<!--sheet-->` line; text put on or above that line would turn the whole document into plain text,
+    // so an insert there lands on the line after it (the caret sits at line 1 until the user clicks in the editor).
+    const eol = doc.indexOf('\n');
+    const first = eol < 0 ? doc : doc.slice(0, eol);
+    if (SHEET_MARKER.test(first) && selStart <= first.length) {
+        if (eol < 0) return { ok: true, edit: { start: doc.length, end: doc.length, text: '\n' + body + (body.endsWith('\n') ? '' : '\n') } };
+        return { ok: true, edit: { start: eol + 1, end: Math.max(selEnd, eol + 1), text: body + (body.endsWith('\n') ? '' : '\n') } };
+    }
     const lineStart = doc.lastIndexOf('\n', selStart - 1) + 1;
     const midLine = selStart > lineStart;
     return { ok: true, edit: { start: selStart, end: selEnd, text: (midLine ? '\n' : '') + body + (body.endsWith('\n') ? '' : '\n') } };

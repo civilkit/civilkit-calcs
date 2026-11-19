@@ -147,7 +147,7 @@ frame"); this section records how it is built.
   the active Monaco editor, `window.calcpadActiveEditor`). Each is one `executeEdits` between two `pushUndoStop` calls, so it is one Ctrl+Z; neither uses
   `setValue`, so the undo stack and the caret survive (a patch passes no cursor-state computer, so Monaco moves the selection with the text; an insert puts the
   caret after the new text). They are not `applying` edits: the normal `onTabContentChanged` path sends the `civilkit-source` that follows, at the next revision.
-  Insert: a caret mid-line gets `\n` first, the text always ends with `\n`, `\r\n` becomes `\n` (Monaco converts to the model's own). Patch: every `find` must occur once
+  Insert: a caret mid-line gets `\n` first, in a sheet a caret on or above the `<!--sheet-->` line (which is where it stays until the user clicks in the editor) puts the text on the line after it, so the marker stays the first line, the text always ends with `\n`, `\r\n` becomes `\n` (Monaco converts to the model's own). Patch: every `find` must occur once
   in the text as it is when the message arrives (`String.indexOf` counting overlapping occurrences); edits are taken in message order and a match overlapping an
   earlier planned one is refused; refused edits do not stop the others (partial apply) and come back in one `civilkit-error`. Limits: 100,000 characters per text,
   500 edits, 1,000,000 characters in all (`MAX_*` in `edits.ts`). `caps` has `insert` and `patch`.

@@ -389,6 +389,18 @@ check((await prop('--ck-panel')) === '#14171d' && (await prop('--ck-accent-soft'
     await undo();
     check((await editorText()) === DOC, 'and one undo restores the selected text');
 
+    // the sheet marker stays the first line: an insert with the caret on line 1 (or the marker selected) lands after it
+    await load(210);
+    await setSel([1, 1, 1, 1]);
+    r = await edit({ type: 'civilkit-insert', text: 'top: 4 m' });
+    check((await editorText()) === '<!--sheet-->\ntop: 4 m\na: 1 m\nb: 2 m\nc: 3 m\n', `insert with the caret on line 1 goes after the sheet marker (${JSON.stringify(await editorText())})`);
+    await undo();
+    check((await editorText()) === DOC, 'and one undo restores the text');
+    await setSel([1, 5, 1, 9]);
+    r = await edit({ type: 'civilkit-insert', text: 'mid: 4 m' });
+    check((await editorText()) === '<!--sheet-->\nmid: 4 m\na: 1 m\nb: 2 m\nc: 3 m\n', `insert with the caret inside the marker line goes after it too (${JSON.stringify(await editorText())})`);
+    await undo();
+
     // refused inserts change nothing
     for (const bad of [{ text: 5 }, { text: '' }, { text: 'x'.repeat(100001) }, {}]) {
         r = await edit({ type: 'civilkit-insert', ...bad }, false);
