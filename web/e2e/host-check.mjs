@@ -9,6 +9,7 @@
 //   5. nothing of the document is stored: no recent files, no session, no IndexedDB database; a reload starts blank;
 //   6. civilkit-theme: mode, Studio's tokens as inline --ck-* overrides, bad values refused, clearing;
 //   6b. civilkit-command: every id shows its pane or dialog, refusals, Samples > Open without a question, tokens reach Monaco and the dialogs;
+//   6c. civilkit-insert and civilkit-patch; 6d. civilkit-define (scalars, vectors, precedence, lines, limits) and civilkit-names (completion), lost variables;
 //   7. the plain app (no ?host) still has its File menu, tabs and suite bar logic; no console errors anywhere.
 import { spawn } from 'node:child_process';
 import { createServer } from 'node:http';
@@ -430,6 +431,234 @@ check((await prop('--ck-panel')) === '#14171d' && (await prop('--ck-accent-soft'
         r = await edit({ type: 'civilkit-patch', ...bad }, false);
         check(r.error.length === 1 && /^patch:/.test(r.error[0].data.errors[0]) && (await editorText()) === DOC && r.source.length === 0, `civilkit-patch ${JSON.stringify(bad).slice(0, 30)} is refused whole (${r.error[0]?.data.errors})`);
     }
+}
+
+// ---- 6d. civilkit-define and civilkit-names: variables the host defines --------------------------------------------------------
+{
+    check(['define', 'names'].every((c) => ready.data.caps.includes(c)), `ready lists the caps define and names (${JSON.stringify(ready?.data.caps)})`);
+    const lastRes = async (from) => types((await msgs()).slice(from), 'civilkit-results').at(-1)?.data;
+    /** Loads `source` and waits for its results. */
+    const loadDoc = async (source, rev = 1) => {
+        const l = await exchange({ type: 'civilkit-load', source, name: 'defs', revision: rev }, (x) => types(x, 'civilkit-results').length > 0);
+        await settle(600);
+        return types(l, 'civilkit-results').at(-1)?.data;
+    };
+    /** Sends a civilkit-define and returns what followed once the results satisfy `ok` (or an error came). */
+    const define = async (values, notes, ok = () => true, tries = 200) => {
+        const msg = { type: 'civilkit-define', values };
+        if (notes) msg.notes = notes;
+        const l = await exchange(msg, (x) => types(x, 'civilkit-error').length > 0 || types(x, 'civilkit-results').some((r) => ok(r.data)), tries);
+        return { results: types(l, 'civilkit-results').map((r) => r.data), error: types(l, 'civilkit-error').map((e) => e.data.errors), sources: types(l, 'civilkit-source'), all: l };
+    };
+    const hasErr = (res, re, line) => (res?.errors ?? []).some((e) => re.test(e.message) && (line === undefined || e.line === line));
+    const versionId = () => app().evaluate(() => window.calcpadActiveEditor.getModel().getVersionId());
+
+    // scalars: used in formulas, with a unit conversion; not in the document, no source, no edit
+    const DOC = '<!--sheet-->\nutil: Mz_M54 / phiMs_M54\nM_kN: Mz_M54 -> kN*m\nM_Nmm: Mz_M54 -> N*mm\n';
+    await loadDoc(DOC, 10);
+    const v0 = await versionId();
+    let r = await define({ Mz_M54: '-1.79 kN*m', phiMs_M54: '23.15 kN*m' }, undefined, (d) => d.values.util && !d.values.util.text.includes('Undefined'));
+    let res = r.results.at(-1);
+    check(Math.abs(res?.values.util?.value - (-1.79 / 23.15)) < 1e-6, `a defined name is used in a formula: util = Mz_M54 / phiMs_M54 (${res?.values.util?.value})`);
+    check(Math.abs(res?.values.M_Nmm?.value - (-1790000)) < 1 && /N/.test(res.values.M_Nmm.unit), `-> converts a host value: M_Nmm = ${res?.values.M_Nmm?.value} ${res?.values.M_Nmm?.unit}`);
+    check(res?.values.Mz_M54?.host === true && res.values.Mz_M54.value === -1.79 && /kN/.test(res.values.Mz_M54.unit), `the host's variable is in the values, marked host:true (${JSON.stringify(res?.values.Mz_M54)})`);
+    check((res?.errors ?? []).length === 0, `no errors with the host's values (${JSON.stringify(res?.errors)})`);
+    check(r.sources.length === 0 && (await editorText()) === DOC && (await versionId()) === v0, 'define sends no civilkit-source and changes neither the text nor the editor\'s version (undo stack)');
+
+    // replace: a name left out is gone, and the use of it is an error with the document's own line
+    r = await define({ Mz_M54: '-2 kN*m' }, undefined, (d) => d.values.Mz_M54?.value === -2);
+    res = r.results.at(-1);
+    check(res?.values.Mz_M54?.value === -2 && hasErr(res, /Undefined variable/, 2), `a second define replaces the set: phiMs_M54 is gone and its use errors on line 2 (${JSON.stringify(res?.errors)})`);
+    r = await define({}, undefined, (d) => !d.values.Mz_M54);
+    res = r.results.at(-1);
+    check(!res?.values.Mz_M54 && hasErr(res, /Undefined variable/, 2) && hasErr(res, /Undefined variable/, 3), `an empty define clears them: the uses error on lines 2 and 3 (${JSON.stringify((res?.errors ?? []).map((e) => e.line))})`);
+
+    // refused: nothing applied (the earlier set stays)
+    await define({ Mz_M54: '-1.79 kN*m', phiMs_M54: '23.15 kN*m' }, undefined, (d) => d.values.util?.value !== undefined && typeof d.values.util.value === 'number');
+    const bads = [
+        [{ '1x': '5' }, /not a name/], [{ a: 'abc' }, /must be a number/], [{ a: '5 | note' }, /must be a number/], [{ a: '[1; abc]' }, /element 2/],
+        [{ a: '5 kN\nb' }, /must be a number/], [{ a: '1e400' }, /number/], [{ a: '[1; 2' }, /\]/], [{ a: '5 nosuchunit_zz' }, /a/], [[1, 2], /object/],
+    ];
+    for (const [values, why] of bads) {
+        const l = await exchange({ type: 'civilkit-define', values: values }, (x) => types(x, 'civilkit-error').length > 0, 60);
+        const err = types(l, 'civilkit-error')[0]?.data.errors[0] ?? '';
+        check(types(l, 'civilkit-error').length === 1 && why.test(err), `define ${JSON.stringify(values).slice(0, 40)} is refused (${err.slice(0, 80)})`);
+    }
+    {
+        const many = Object.fromEntries(Array.from({ length: 2001 }, (_, i) => [`n${i}`, '1']));
+        const l = await exchange({ type: 'civilkit-define', values: many }, (x) => types(x, 'civilkit-error').length > 0, 60);
+        check(/at most 2000/.test(types(l, 'civilkit-error')[0]?.data.errors[0] ?? ''), 'define over 2000 names is refused');
+        const huge = { v: `[${Array.from({ length: 5001 }, () => '1').join('; ')}]` };
+        const l2 = await exchange({ type: 'civilkit-define', values: huge }, (x) => types(x, 'civilkit-error').length > 0, 60);
+        check(/at most 5000 elements/.test(types(l2, 'civilkit-error')[0]?.data.errors[0] ?? ''), 'a vector of more than 5000 elements is refused');
+        const wide = Object.fromEntries(Array.from({ length: 1500 }, (_, i) => [`name_with_some_length_${i}`, `${'1'.repeat(40)} kN*m`]));
+        const l3 = await exchange({ type: 'civilkit-define', values: wide }, (x) => types(x, 'civilkit-error').length > 0, 60);
+        check(/over 65536 characters/.test(types(l3, 'civilkit-error')[0]?.data.errors[0] ?? ''), 'define over 64 KB is refused');
+    }
+    // a name the engine refuses (a unit) names the define and applies nothing
+    {
+        const l = await exchange({ type: 'civilkit-define', values: { Mz_M54: '-9 kN*m', m: '5' } }, (x) => types(x, 'civilkit-error').length > 0 || types(x, 'civilkit-results').length > 0, 60);
+        const err = types(l, 'civilkit-error')[0]?.data.errors[0] ?? '';
+        check(/"m"/.test(err), `a name that is a unit is refused, naming it (${err.slice(0, 100)})`);
+    }
+    r = await define({ Mz_M54: '-1.79 kN*m', phiMs_M54: '23.15 kN*m' }, undefined, (d) => typeof d.values.util?.value === 'number');
+    check(Math.abs(r.results.at(-1)?.values.util?.value - (-1.79 / 23.15)) < 1e-6, 'the refused messages left the earlier set in place');
+
+    // the sheet wins, with a warning that names the name and the line
+    await loadDoc('<!--sheet-->\nMz_M54: 7 kN*m\nz: Mz_M54*2\n', 20);
+    r = await define({ Mz_M54: '5 kN*m' }, undefined, (d) => d.values.z?.value !== undefined, 200);
+    await settle(600);
+    res = (await lastRes(0)) ?? r.results.at(-1);
+    const warn = (res?.errors ?? []).find((e) => e.severity === 'warning' && /Mz_M54/.test(e.message));
+    check(res?.values.Mz_M54?.value === 7 && res.values.Mz_M54.host !== true && res.values.z.value === 14, `the document's own definition wins (Mz_M54 = ${res?.values.Mz_M54?.value}, z = ${res?.values.z?.value})`);
+    check(!!warn && warn.line === 2, `and the results carry a warning on the document's line (${JSON.stringify(warn)})`);
+
+    // lines are the document's own with a prelude in front: a sheet, and plain Calcpad text
+    await loadDoc('<!--sheet-->\nMz_M54: 7 kN*m\nq: 1\nbad: 3 +\n', 30);
+    r = await define({ phiMs_M54: '23.15 kN*m', other: '3' }, undefined, (d) => d.values.phiMs_M54 !== undefined);
+    res = r.results.at(-1);
+    check((res?.errors ?? []).some((e) => e.severity === 'error' && e.line === 4), `error lines are not shifted by the prelude (sheet): ${JSON.stringify((res?.errors ?? []).map((e) => [e.line, e.severity]))}`);
+    await loadDoc('U = phiMs_M54/2\nW = U|kN*m\nbad = 3 +\n', 31);
+    r = await define({ phiMs_M54: '23.15 kN*m' }, undefined, (d) => d.values.U !== undefined);
+    res = r.results.at(-1);
+    check(Math.abs(res?.values.U?.value - 11.575) < 1e-6 && (res.errors ?? []).some((e) => e.line === 3 && /ncomplete/.test(e.message)), `plain Calcpad text: host values work and error lines are the text's own (${JSON.stringify(res?.errors)}, refused: ${JSON.stringify(r.error)})`);
+    check(!/#hide|#show/.test(await editorText()) && (await editorText()) === 'U = phiMs_M54/2\nW = U|kN*m\nbad = 3 +\n', 'the prelude is not in the editor');
+
+    // vectors: the literal forms, results shape, loops, element access, functions, units, out of range
+    const VDOC = [
+        '<!--sheet-->', 'n: len(member_nums)', 'big: max(Mz_members)', 'small: min(Mz_members)', 'tot: sum(Mz_members)', 'a: abs(Mz_members)', 'c: Mz_members -> kN*m',
+        'for i in 1..n:', '    t: Mz_members.i', 'for x in Mz_members:', '    y: x*2', 'e: Mz_members.5', 's: sum(spans)', 'm2: max(conv)', 'm3: max(mixed)', '',
+    ].join('\n');
+    await loadDoc(VDOC, 40);
+    r = await define({ Mz_members: '[-245.3 kN*m; 120.4 kN*m; -61 kN*m]', member_nums: '[1; 2; 12]', spans: '[16 ft; 12 ft]', conv: '[1 kN*m; 2000 N*m]', mixed: '[1 kN*m; 2 N*m; 3]' }, undefined, (d) => d.values.tot !== undefined);
+    res = r.results.at(-1);
+    const mv = res?.values.Mz_members;
+    check(mv?.vector === true && mv.host === true && Array.isArray(mv.value) && mv.value.length === 3 && mv.value[0].value === -245.3 && /kN/.test(mv.value[0].unit) && /^\[-245\.3; 120\.4; -61\]/.test(mv.text), `a vector is in the results as an array of {value, unit} with its text (${JSON.stringify(mv).slice(0, 160)})`);
+    check(res?.values.member_nums?.value?.map((e) => e.value).join() === '1,2,12' && res.values.n.value === 3, `a unitless vector, and len() of it (${JSON.stringify(res?.values.member_nums?.text)}, n = ${res?.values.n?.value})`);
+    check(res?.values.big?.value === 120.4 && res.values.small.value === -245.3 && Math.abs(res.values.tot.value + 185.9) < 1e-9 && /kN/.test(res.values.big.unit), `max, min and sum of a vector of quantities keep the unit (big ${res?.values.big?.value} ${res?.values.big?.unit}, tot ${res?.values.tot?.value})`);
+    check(res?.values.a?.vector && res.values.a.value.map((e) => e.value).join() === '245.3,120.4,61', `abs(v) is a vector (${res?.values.a?.text})`);
+    check(res?.values.c?.vector && /kN/.test(res.values.c.unit || res.values.c.value?.[0]?.unit), `v -> kN*m is a vector in kN*m (${res?.values.c?.text})`);
+    check(res?.values.t?.value === -61 && res.values.y?.value === -122 && res.values.x?.value === -61, `for i in 1..n with v.i and for x in v run over the defined vector (t ${res?.values.t?.value}, y ${res?.values.y?.value})`);
+    check(hasErr(res, /Index out of range: 5/, 12), `an index out of range is an error with the document's line (${JSON.stringify((res?.errors ?? []).filter((e) => /range/.test(e.message)))})`);
+    check(res?.values.s?.value === 28 && /ft/.test(res.values.s.unit) && res.values.spans.text === '[16; 12] ft', `[16 ft; 12 ft]: sum is 28 ft, the unit shown once (${res?.values.s?.value} ${res?.values.s?.unit}, ${res?.values.spans?.text})`);
+    check(res?.values.m2?.value !== undefined && !hasErr(res, /max\(conv\)/), `max of a vector in two units of one dimension: ${JSON.stringify(res?.values.m2)}`);
+    check(hasErr(res, /Inconsistent units/, 15), `mixed units (with a unitless element) are an Inconsistent units error on the document's line (${JSON.stringify((res?.errors ?? []).filter((e) => /nconsistent/.test(e.message)).map((e) => e.line))})`);
+    // a vector with the comma form
+    r = await define({ Mz_members: '[1, 2, 3]', member_nums: '[1; 2; 12]' }, undefined, (d) => d.values.Mz_members?.value?.length === 3);
+    check(r.results.at(-1)?.values.Mz_members?.value.length === 3, 'the comma form [1, 2, 3] is a vector too');
+
+    // size and timing: 3, 2000 and 5000 elements, and a loop over them
+    await loadDoc('<!--sheet-->\nns: len(big_v)\nsm: sum(big_v)\nmx: max(big_v)\nfor i in 1..3:\n    t: big_v.i\nlast: big_v.ns\n', 50);
+    for (const count of [3, 2000, 5000]) {
+        const lit = `[${Array.from({ length: count }, (_, i) => `${((i % 97) + 1) * 0.5} kN*m`).join('; ')}]`;
+        const t0 = Date.now();
+        r = await define({ big_v: lit }, undefined, (d) => d.values.ns?.value === count, 300);
+        const ms = Date.now() - t0;
+        res = r.results.at(-1);
+        const expectSum = Array.from({ length: count }, (_, i) => ((i % 97) + 1) * 0.5).reduce((a, b) => a + b, 0);
+        check(res?.values.ns?.value === count && Math.abs(res.values.sm.value - expectSum) < 1e-6 && res.values.big_v.value.length === count && res.values.t.value === 1.5 && (res.errors ?? []).length === 0,
+            `a vector of ${count} elements (${Math.round(lit.length / 1024)} KB): len, sum, max, a loop and an index all work, ${ms} ms to the results (errors ${JSON.stringify(res?.errors)})`);
+    }
+
+    // templates over model data: a count, an empty scope, a loop of a few hundred passes, an alias with the units kept
+    {
+        const l = await exchange({ type: 'civilkit-define', values: { Mz_empty: '[]' } }, (x) => types(x, 'civilkit-error').length > 0, 60);
+        check(/empty vector \[\] cannot be defined/.test(types(l, 'civilkit-error')[0]?.data.errors[0] ?? ''), 'an empty vector [] is refused, with the convention in the message (a count of 0 instead)');
+        const T = [
+            '<!--sheet-->', 'n_sel: len(nums_sel)', 'k: n_selected', 'if n_selected > 0:', '    for i in 1..n_selected:', '        M: Mz_selected.i', '        num: nums_selected.i',
+            '    for x in Mz_selected:', '        y: x', '    s: sum(Mz_selected)', 'z: 1', '',
+        ].join('\n');
+        await loadDoc(T, 80);
+        r = await define({ n_selected: '0' }, undefined, (d) => d.values.k?.value === 0);
+        res = r.results.at(-1);
+        check(res?.values.z?.value === 1 && (res.errors ?? []).filter((e) => e.line !== 2).length === 0, `n = 0 with no vector defined: the loops inside "if n_selected > 0:" are silent, the names they mention need not exist (errors ${JSON.stringify((res?.errors ?? []).map((e) => [e.line, e.message.slice(0, 40)]))})`);
+        check(hasErr(res, /Undefined variable/, 2), 'while a use outside the guard (len(nums_sel) on line 2) is the usual undefined-variable error');
+        await loadDoc('<!--sheet-->\nn0: 0\nfor i in 1..n0:\n    t: i\n', 81);
+        await define({});
+        res = await lastRes(0);
+        check(res?.values.t?.value === 0, `for i in 1..n with n = 0 is NOT zero passes: it counts down, i = 1 then 0 (t ends ${res?.values.t?.value}); guard with "if n > 0:"`);
+        // a scope of three, the same template
+        await loadDoc(T, 82);
+        r = await define({ n_selected: '3', Mz_selected: '[-245.3 kN*m; 120.4 kN*m; -61 kN*m]', nums_selected: '[1; 2; 12]' }, undefined, (d) => d.values.s !== undefined);
+        res = r.results.at(-1);
+        check(res?.values.n_selected?.value === 3 && res.values.M?.value === -61 && res.values.num?.value === 12 && Math.abs(res.values.s.value + 185.9) < 1e-9 && /kN/.test(res.values.s.unit) && !hasErr(res, /./, 5), `the same template with 3 members: the loop prints a quantity per pass (M ends ${res?.values.M?.value} ${res?.values.M?.unit}, num ${res?.values.num?.value}, sum ${res?.values.s?.value})`);
+        // a few hundred passes: a quantity line per pass, two per pass, with the timing
+        const N = 300;
+        const big = `[${Array.from({ length: N }, (_, i) => `${(i + 1) * 0.5} kN*m`).join('; ')}]`;
+        const nums = `[${Array.from({ length: N }, (_, i) => i + 1).join('; ')}]`;
+        await loadDoc(T, 83);
+        const t0 = Date.now();
+        r = await define({ n_selected: String(N), Mz_selected: big, nums_selected: nums }, undefined, (d) => d.values.M?.value === N * 0.5, 300);
+        const ms = Date.now() - t0;
+        res = r.results.at(-1);
+        check(res?.values.M?.value === N * 0.5 && res.values.num.value === N && (res.errors ?? []).filter((e) => e.line !== 2).length === 0, `a loop of ${N} passes with two quantity lines each: ${ms} ms from define to results (errors ${JSON.stringify(res?.errors)})`);
+        // an alias: one line switches the scope, units preserved; and the engine converts a vector in place with ->
+        await loadDoc('<!--sheet-->\nmoments: Mz_selected\nn: len(moments)\nmx: max(moments)\nsm: sum(moments)\nfor x in moments:\n    y: x\n', 84);
+        r = await define({ Mz_selected: '[-245.3 kN*m; 120.4 kN*m; -61 kN*m]' }, undefined, (d) => d.values.sm !== undefined);
+        res = r.results.at(-1);
+        check(res?.values.moments?.vector && res.values.moments.value.length === 3 && /kN/.test(res.values.moments.unit) && res.values.n.value === 3 && res.values.mx.value === 120.4 && /kN/.test(res.values.mx.unit) && res.values.y.value === -61,
+            `an alias (moments: Mz_selected) is the vector with its units: len ${res?.values.n?.value}, max ${res?.values.mx?.value} ${res?.values.mx?.unit}, loop over it (y ${res?.values.y?.value} ${res?.values.y?.unit}); moments ${JSON.stringify(res?.values.moments?.text)}`);
+        await loadDoc('<!--sheet-->\nmoments: Mz_selected\nc: moments -> N*m\nmx: max(moments)\n', 85);
+        r = await define({ Mz_selected: '[-245.3 kN*m; 120.4 kN*m; -61 kN*m]' }, undefined, (d) => d.values.mx !== undefined);
+        res = r.results.at(-1);
+        check(res?.values.c?.vector && /N/.test(res.values.c.value?.[0]?.unit ?? res.values.c.unit) && res.values.mx.value > 1000, `v -> N*m converts the vector itself in place, aliases and the host's vector included (mx ${res?.values.mx?.value} ${res?.values.mx?.unit}, Mz_selected ${JSON.stringify(res?.values.Mz_selected?.text)})`);
+        // the template of the guide: an alias and a loop inside the guard, for an empty scope and for three members
+        const TT = ['<!--sheet-->', 'if n_selected > 0:', '    moments: Mz_selected', '    for i in 1..n_selected:', '        num: nums_selected.i', '        M: moments.i', '    M_max: max(moments)', 'z: 1', ''].join('\n');
+        await loadDoc(TT, 86);
+        r = await define({ n_selected: '0' }, undefined, (d) => d.values.z?.value === 1);
+        res = r.results.at(-1);
+        check(res?.values.z?.value === 1 && (res.errors ?? []).length === 0 && !res.values.M_max, `the guide's template with an empty scope (n_selected = 0) runs without errors (${JSON.stringify(res?.errors)})`);
+        r = await define({ n_selected: '3', Mz_selected: '[-245.3 kN*m; 120.4 kN*m; -61 kN*m]', nums_selected: '[1; 2; 12]' }, undefined, (d) => d.values.M_max !== undefined);
+        res = r.results.at(-1);
+        check(res?.values.M_max?.value === 120.4 && /kN/.test(res.values.M_max.unit) && res.values.M.value === -61 && res.values.num.value === 12 && (res.errors ?? []).length === 0, `and with 3 members (M_max ${res?.values.M_max?.value} ${res?.values.M_max?.unit}; errors ${JSON.stringify(res?.errors)})`);
+        await define({});
+    }
+
+    // notes: a decoration with the hover note on the host's names in the editor
+    await loadDoc('<!--sheet-->\nuse: Mz_M54*2\nother: 4\n', 60);
+    r = await define({ Mz_M54: '-1.79 kN*m' }, { Mz_M54: 'from model: M54 Mz, solved results' }, (d) => d.values.use !== undefined);
+    await settle(800);
+    const decos = await app().evaluate(() => window.calcpadActiveEditor.getModel().getAllDecorations().filter((d) => d.options.inlineClassName === 'ck-host-var').map((d) => ({ line: d.range.startLineNumber, hover: d.options.hoverMessage?.value ?? '' })));
+    check(decos.length === 1 && decos[0].line === 2 && /from model: M54 Mz/.test(decos[0].hover), `the host's name is drawn in the editor with the note as its hover (${JSON.stringify(decos)})`);
+    const colour = await app().evaluate(() => { const el = document.querySelector('.monaco-editor .ck-host-var'); return el ? getComputedStyle(el).textDecorationLine : null; });
+    check(colour === 'underline', `the decoration is styled (${colour})`);
+    // the editor's own check (the engine's lint) knows the name: a squiggle under the use of an undefined name goes away once it is defined
+    const squiggles = () => app().evaluate(() => document.querySelectorAll('.monaco-editor .squiggly-error').length);
+    await define({});
+    const withoutDef = await until(squiggles, (n) => n > 0, 40);
+    await define({ Mz_M54: '-1.79 kN*m' });
+    const withDef = await until(squiggles, (n) => n === 0, 40);
+    check(withoutDef > 0 && withDef === 0, `the editor's checks know a defined name: the squiggle under its use is gone after civilkit-define (${withoutDef} before, ${withDef} after)`);
+
+    // names: completion offers them as the engineer types
+    check((await exchange({ type: 'civilkit-names', items: 'x' }, (x) => types(x, 'civilkit-error').length > 0, 40)).length > 0, 'civilkit-names with bad items is refused');
+    await send({ type: 'civilkit-names', items: [{ name: 'Mz_M12', unit: 'kN*m', detail: 'member 12 Mz, peak' }, { name: 'Mz_M13', unit: 'kN*m', detail: 'member 13 Mz' }, { name: 'length_M1', unit: 'm', detail: 'member 1 length' }] });
+    await settle(300);
+    await app().evaluate(() => {
+        const ed = window.calcpadActiveEditor;
+        const m = ed.getModel();
+        const last = m.getLineCount();
+        ed.focus();
+        ed.executeEdits('t', [{ range: { startLineNumber: last, startColumn: m.getLineMaxColumn(last), endLineNumber: last, endColumn: m.getLineMaxColumn(last) }, text: 'v: Mz_M1' }]);
+        ed.setPosition({ lineNumber: last, column: m.getLineMaxColumn(last) });
+        ed.trigger('test', 'editor.action.triggerSuggest', {});
+    });
+    const rows = await until(() => app().evaluate(() => Array.from(document.querySelectorAll('.suggest-widget .monaco-list-row')).map((x) => x.textContent)), (l) => l.some((t) => /Mz_M12/.test(t)), 40);
+    check((rows ?? []).some((t) => /Mz_M12/.test(t) && /kN/.test(t)) && (rows ?? []).some((t) => /Mz_M13/.test(t)) && !(rows ?? []).some((t) => /length_M1/.test(t)), `completion offers the host's names that match what is typed, with their unit (${JSON.stringify((rows ?? []).slice(0, 3))})`);
+    await app().evaluate(() => window.calcpadActiveEditor.trigger('test', 'hideSuggestWidget', {}));
+    await send({ type: 'civilkit-names', items: [] });
+
+    // lost variables: a line read as text, or one that fails, is reported with its line
+    await loadDoc('<!--sheet-->\na1: 245.3 kN*m   // x\nb: a1*2\n', 70);
+    await define({});
+    await settle(800);
+    res = await lastRes(0);
+    check(hasErr(res, /Invalid syntax/, 2) && hasErr(res, /Undefined variable/, 3), `a line that fails (a trailing // note) is reported with its line, and so is the use of the lost name (${JSON.stringify((res?.errors ?? []).map((e) => [e.line, e.message.slice(0, 30)]))})`);
+    await loadDoc('<!--sheet-->\na1: 245.3 kN*m <!-- c -->\nb: 1\n', 71);
+    await settle(1000);
+    res = await lastRes(0);
+    check((res?.errors ?? []).some((e) => e.severity === 'warning' && e.line === 2 && /a1/.test(e.message)), `a definition read as text is a warning on its line even when nothing uses it (${JSON.stringify(res?.errors)})`);
+    await define({});
 }
 
 // ---- 7. the plain app ---------------------------------------------------------------------------------------------
