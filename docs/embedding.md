@@ -106,6 +106,42 @@ The service worker is unchanged in behaviour: a reader who already has the app i
 precache (`index.html` is matched ignoring the query), and an embed never installs it. `embed/` (the catalogue page) is
 left out of the precache like `learn/`; `embed.js` is precached with the rest of the build, which does no harm.
 
+## Host mode (full app)
+
+`?host=1` is the second way to put Calcs in a frame, beside the light embed above: the whole app (ribbon, Monaco, forms, samples,
+plots, Python, export) with one document owned by the host. It was built for CivilKit Studio's Calc tab, which stores the sheet text
+in its project file. The user-facing description and the message table are in `book/src/embedding.md` ("Host mode: the whole app in a
+frame"); this section records how it is built.
+
+* **Entry.** `src/boot.ts` does not branch on it: `main.ts` loads as always and `src/host/flag.ts` (`hostMode`) is read by the pieces
+  that differ. `?embed` wins if both are given; the flag is false in the desktop app. If the page is not framed `installHost` does
+  nothing, so `?host=1` opened on its own is a blank app.
+* **One document.** `tabs/tab-manager.ts`: in host mode `newUntitled`, `openFile` and `openDraft` replace the one tab's text
+  (`replaceOnly`, a clean document) and `close` does nothing, so every caller (samples, imports, civilkit-load) lands in the same tab.
+  CSS under `html[data-host]` hides the tab's close button, the + and the split button; `splitEditor` and "Open Full HTML" return early.
+* **Nothing stored.** The web build had no session restore or draft autosave to begin with (those are the desktop's, in the Tauri
+  block of `main.ts`); what the browser build writes is switched off here: the recent-files list (`web-files.ts`), the IndexedDB library and
+  handles (`library.ts`: in host mode the library is memory only and starts empty, so a document calculates the same wherever it is
+  opened, and no database is opened at all), `#write` downloads, drop-to-open, Ctrl+O, the `beforeunload` guard and the language prompt. Preferences
+  (`calcpad-settings`, the layout and result mode in `calcpad-workspace-state`, the editor's word wrap) are kept and shared with the
+  standalone app. The e2e check asserts: no recent files, no `openFiles`, no `calcpad-rs` database, none of the text in localStorage,
+  and a blank editor after a reload.
+* **Ribbon.** `host/flag.ts` lists the actions that open, create, save or list files (`newsheet`, `newcalcpad`, `open`, `save`,
+  `saveas`, `filemenu`, `importWorksheet`); `wasm/Ribbon.vue` leaves those buttons, the File button and the empty groups out.
+  Samples, the spreadsheet import (cells into the sheet) and the exports stay. A sample replaces the open document, which the host
+  hears about as an edit.
+* **Protocol.** `host/host.ts` (messages), `host/protocol.ts` (the checks, pure), `host/channel.ts` (parent-only in and out). The embed
+  has the same limits in `embed.ts`; the checks are copied rather than shared so the embed is untouched (an empty document is allowed here).
+  `civilkit-source` is sent from `onTabContentChanged` after 300 ms of quiet, except while a load is being put in place (`applying`);
+  the load adopts the host's `revision` and each source is one more. Results are one convert with line anchors and one values call
+  (about 0.6 s after the last edit), independent of whether the results pane is showing; a sheet with Python blocks is run without
+  them, so a Python consent question is never raised for the host's results.
+* **Update notice.** `update-notice.ts` posts `civilkit-update-available` in host mode instead of showing its Reload button.
+* **Theme.** `civilkit-theme` calls `setAppTheme` (not the bridge's `updateColorTheme`), so the host's choice is never saved over the
+  user's own preference. Tokens are inline custom properties on `<html>` (`host/protocol.ts` `TOKEN_MAP`); the editor's colours come from its
+  own Monaco theme and follow only light or dark: a gap if Studio's palette must reach the editor.
+* **Tests.** `web/e2e/host-check.mjs` (own ports; never 5101).
+
 ## Landing pages and the catalogue
 
 `tools/learn/render.mjs` adds a "Try it" section (a lazy iframe with a fixed height of 560 px, so nothing shifts, and an
