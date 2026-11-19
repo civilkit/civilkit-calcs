@@ -20,7 +20,7 @@ import * as monaco from 'monaco-editor';
 import { buildApiSettings } from 'calcpad-frontend/types/settings';
 import type { TabManager } from '../tabs/tab-manager';
 import type { FileLibrary } from '../wasm/library';
-import { compileSheet, isSheetText } from '../wasm/sheet';
+import { compileSheet, isSheetText, SHEET_MARKER } from '../wasm/sheet';
 import { pythonBlocks, withoutPython } from '../embed/inputs';
 import { framed, fromHost, toHost } from './channel';
 import { COMMAND_IDS, runCommand } from './commands';
@@ -183,6 +183,23 @@ export function installHost(ctx: HostContext): void {
         return errs.slice(0, 6000).map((e) => ({ line: typeof e.sourceLine === 'number' && e.sourceLine > 0 ? e.sourceLine : null, message: String(e.message ?? '').slice(0, 200) }));
     }
 
+    /** The editor's lint treats every listed name as known (it does not call it undefined), in the host's spelling and in Calcpad's (phi is φ). */
+    let knowing = 0;
+    async function lintKnowing(names: string[]): Promise<void> {
+        const turn = ++knowing;
+        const known = new Set(names);
+        if (names.length) {
+            try {
+                const sheet = await compileSheet(`${SHEET_MARKER}\n${names.map((n) => `${n}: 1`).join('\n')}\n`);
+                for (const x of sheet.defs) { const n = names[x.line - 1]; if (n) known.add(x.calcpad); }
+            } catch { /* the names as sent still count */ }
+        }
+        if (turn !== knowing) return;
+        const e = (window as unknown as { calcpadEngine?: { setLintKnownNames?: (n: Iterable<string>) => void } }).calcpadEngine;
+        e?.setLintKnownNames?.(known);
+        ctx.recalc();          // the editor's checks: the document's text did not change, so nothing else would
+    }
+
     function drawHostNames(): void {
         const ed = activeEditor();
         if (!ed) return;
@@ -308,6 +325,7 @@ export function installHost(ctx: HostContext): void {
                 const c = checkNames(d.items);
                 if (!c.ok) { toHost({ type: 'civilkit-error', errors: [c.error] }); return; }
                 setHostNames(c.items);
+                void lintKnowing(c.items.map((i) => i.name));
                 return;
             }
             case 'civilkit-load': {

@@ -348,6 +348,24 @@ export interface HostPrelude {
 let hostPrelude: HostPrelude | null = null;
 export function setHostPrelude(p: HostPrelude | null): void { hostPrelude = p && p.lines > 0 ? p : null; }
 
+/** The names the host lists (`civilkit-names`), in the spelling of the host and of Calcpad: the editor's lint does not call them undefined, whether
+ *  or not they are defined right now (a template for any selection mentions names the model has no value for yet). The results are not changed. */
+let lintKnown: Set<string> = new Set();
+export function setLintKnownNames(names: Iterable<string>): void { lintKnown = new Set(names); }
+const UNDEFINED_VARIABLE = /^Undefined variable: '(.+)'$/;
+function withoutKnownNames(out: string): string {
+    if (!lintKnown.size) return out;
+    let doc: { diagnostics?: LintDiag[]; errorCount?: number; warningCount?: number };
+    try { doc = JSON.parse(out); } catch { return out; }
+    if (!Array.isArray(doc.diagnostics)) return out;
+    const kept = doc.diagnostics.filter((d) => { const m = UNDEFINED_VARIABLE.exec(d.message); return !(m && lintKnown.has(m[1])); });
+    if (kept.length === doc.diagnostics.length) return out;
+    doc.diagnostics = kept;
+    if (typeof doc.errorCount === 'number') doc.errorCount = kept.filter((d) => d.severityId === 0).length;
+    if (typeof doc.warningCount === 'number') doc.warningCount = kept.filter((d) => d.severityId === 1).length;
+    return JSON.stringify(doc);
+}
+
 /** A request body whose content is a sheet: the body with the compiled content (behind the host's prelude, if any), and the compile. */
 async function sheetBody(body: string | null, plainTex = false, prelude = true): Promise<{ body: string; sheet: SheetCompiled } | null> {
     if (!body) return null;
@@ -445,6 +463,8 @@ export interface WasmTransport {
     pythonScope: () => string;
     /** Host mode's predefined variables: hidden lines in front of every calculation (see HostPrelude); null removes them. */
     setHostPrelude: (p: HostPrelude | null) => void;
+    /** The names the editor's lint does not call undefined (the host's list). */
+    setLintKnownNames: (names: Iterable<string>) => void;
 }
 
 const IMAGE_TYPES: Record<string, string> = {
@@ -494,6 +514,7 @@ export function installWasmTransport(): WasmTransport {
         resolveFile: null,
         pythonScope: () => 'default',
         setHostPrelude,
+        setLintKnownNames,
     };
     const python = new PythonRunner(base);
     (window as unknown as { calcpadPython: PythonRunner }).calcpadPython = python;
@@ -549,12 +570,14 @@ export function installWasmTransport(): WasmTransport {
             const pl = !sh && !positional ? plainBody(body) : null;
             let out = await highlighter.call(HIGHLIGHTER_METHODS[endpoint], sh ? sh.body : pl ? pl.body : body, signal);
             if (sh && endpoint === 'lint') {
-                out = sheetLint(out, sh.sheet, (JSON.parse(body) as { content: string }).content);
+                out = withoutKnownNames(sheetLint(out, sh.sheet, (JSON.parse(body) as { content: string }).content));
             } else if (sh && endpoint === 'definitions') {
                 // Every zero based line number in the answer is an output line.
                 out = out.replace(/("(?:line|lineNumber|startLine|endLine)"\s*:\s*)(\d+)/g, (_m, a: string, n: string) => a + String(sheetLine(sh.sheet, Number(n) + 1) - 1));
             } else if (pl && pl.shift && endpoint === 'lint') {
-                out = shiftLint(out, pl.shift);
+                out = withoutKnownNames(shiftLint(out, pl.shift));
+            } else if (endpoint === 'lint') {
+                out = withoutKnownNames(out);
             } else if (pl && pl.shift && endpoint === 'definitions') {
                 out = out.replace(/("(?:line|lineNumber|startLine|endLine)"\s*:\s*)(\d+)/g, (_m, a: string, n: string) => a + String(Number(n) - pl.shift));
             }
