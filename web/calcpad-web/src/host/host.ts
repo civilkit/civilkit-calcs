@@ -1,6 +1,7 @@
 // Host mode (?host=1): the full app as a frame in another program. The host owns the one document; this module is the line to it.
 //   host to app:  civilkit-load {source, name?, files?, values?, revision?}   replace the document (no prompt, nothing stored here)
 //                 civilkit-theme {mode?, tokens?}                              light | dark | auto, and Studio's design tokens
+//                 civilkit-command {id}                                        run one of the `commands` of civilkit-ready (commands.ts)
 //                 civilkit-get                                                 repeat the last civilkit-results
 //                 civilkit-get-source                                          send civilkit-source now (same revision)
 //   app to host:  civilkit-ready {caps, protocol}                              ONCE, when the app takes messages
@@ -17,6 +18,10 @@ import type { FileLibrary } from '../wasm/library';
 import { isSheetText } from '../wasm/sheet';
 import { pythonBlocks, withoutPython } from '../embed/inputs';
 import { framed, fromHost, toHost } from './channel';
+import { COMMAND_IDS, runCommand } from './commands';
+import { syncEditorTheme } from './monaco-tokens';
+import { onAppThemeChanged } from '../editor/app-theme';
+import { ribbonContext } from '../wasm/ribbon';
 import { CAPS, PROTOCOL, TOKEN_MAP, checkHostLoad, checkTokens, isThemeMode, type HostLoad, type ThemeMode } from './protocol';
 
 export interface HostContext {
@@ -155,7 +160,11 @@ export function installHost(ctx: HostContext): void {
         for (const p of tokenProps) root.removeProperty(p);
         tokenProps = Object.keys(props);
         for (const [p, v] of Object.entries(props)) root.setProperty(p, v);
+        // Monaco cannot read CSS variables: its theme is defined from the computed values (after the style has been applied).
+        queueMicrotask(() => syncEditorTheme(tokenProps.length > 0));
     }
+    // A change of the app's own theme re-selects Monaco's theme; with tokens in force the host's one goes back on.
+    onAppThemeChanged(() => { if (tokenProps.length) queueMicrotask(() => syncEditorTheme(true)); });
 
     fromHost((d) => {
         switch (d.type) {
@@ -174,6 +183,11 @@ export function installHost(ctx: HostContext): void {
                 if (!t.ok) { toHost({ type: 'civilkit-error', errors: [t.error] }); return; }
                 if (d.mode !== undefined) ctx.setTheme(d.mode as ThemeMode);
                 applyTokens(t.props);        // absent or empty tokens clear the overrides
+                return;
+            }
+            case 'civilkit-command': {
+                const why = runCommand(d.id, ribbonContext());
+                if (why) toHost({ type: 'civilkit-error', errors: [why] });
                 return;
             }
             case 'civilkit-get':
@@ -196,5 +210,5 @@ export function installHost(ctx: HostContext): void {
     });
 
     // Ready, once: from here on the app takes civilkit-load.
-    toHost({ type: 'civilkit-ready', caps: [...CAPS], protocol: PROTOCOL, tokens: Object.keys(TOKEN_MAP) });
+    toHost({ type: 'civilkit-ready', caps: [...CAPS], commands: COMMAND_IDS, protocol: PROTOCOL, tokens: Object.keys(TOKEN_MAP) });
 }
