@@ -2,7 +2,7 @@
 // The same limits as the embed's checkLoad (src/embed/embed.ts), except that an empty document is allowed (a new, blank sheet).
 
 export const PROTOCOL = 1;
-export const CAPS = ['load', 'loaded', 'source', 'results', 'theme', 'tokens', 'errors', 'save', 'command'] as const;
+export const CAPS = ['load', 'loaded', 'source', 'results', 'theme', 'tokens', 'errors', 'save', 'command', 'insert', 'patch'] as const;
 
 const MAX_SOURCE = 1_000_000;       // characters of sheet text in one civilkit-load
 const MAX_FILES = 5_000_000;        // base64 characters of attached files in one civilkit-load

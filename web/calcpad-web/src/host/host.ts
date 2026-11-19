@@ -2,6 +2,8 @@
 //   host to app:  civilkit-load {source, name?, files?, values?, revision?}   replace the document (no prompt, nothing stored here)
 //                 civilkit-theme {mode?, tokens?}                              light | dark | auto, and Studio's design tokens
 //                 civilkit-command {id}                                        run one of the `commands` of civilkit-ready (commands.ts)
+//                 civilkit-insert {text}                                       put text at the caret (own line), one undo step
+//                 civilkit-patch {edits:[{find, replace}]}                     exact one-match replacements, one undo step
 //                 civilkit-get                                                 repeat the last civilkit-results
 //                 civilkit-get-source                                          send civilkit-source now (same revision)
 //   app to host:  civilkit-ready {caps, protocol}                              ONCE, when the app takes messages
@@ -12,6 +14,7 @@
 //                 civilkit-update-available                                    a newer build is ready (see update-notice.ts)
 //                 civilkit-error {errors}                                      a refused message
 // Same trust rule as the embed: messages from the parent window only (channel.ts). Docs: docs/embedding.md, "Host mode (full app)".
+import * as monaco from 'monaco-editor';
 import { buildApiSettings } from 'calcpad-frontend/types/settings';
 import type { TabManager } from '../tabs/tab-manager';
 import type { FileLibrary } from '../wasm/library';
@@ -22,6 +25,7 @@ import { COMMAND_IDS, runCommand } from './commands';
 import { syncEditorTheme } from './monaco-tokens';
 import { onAppThemeChanged } from '../editor/app-theme';
 import { ribbonContext } from '../wasm/ribbon';
+import { planInsert, planPatch, type PlannedEdit } from './edits';
 import { CAPS, PROTOCOL, TOKEN_MAP, checkHostLoad, checkTokens, isThemeMode, type HostLoad, type ThemeMode } from './protocol';
 
 export interface HostContext {
@@ -166,8 +170,52 @@ export function installHost(ctx: HostContext): void {
     // A change of the app's own theme re-selects Monaco's theme; with tokens in force the host's one goes back on.
     onAppThemeChanged(() => { if (tokenProps.length) queueMicrotask(() => syncEditorTheme(true)); });
 
+    // ---- in: edits of the open document (edits.ts plans them; Monaco applies each as one undo step, so the host's edit is one Ctrl+Z) ----
+    type Editor = monaco.editor.IStandaloneCodeEditor;
+    const activeEditor = (): Editor | null => ((window as unknown as { calcpadActiveEditor?: Editor }).calcpadActiveEditor ?? null);
+    function applyPlanned(ed: Editor, planned: PlannedEdit[], caretAfter: boolean): void {
+        const model = ed.getModel();
+        if (!model || !planned.length) return;
+        const ops = planned.map((e) => {
+            const a = model.getPositionAt(e.start);
+            const b = model.getPositionAt(e.end);
+            return { range: new monaco.Range(a.lineNumber, a.column, b.lineNumber, b.column), text: e.text, forceMoveMarkers: caretAfter };
+        });
+        ed.pushUndoStop();
+        // Insert puts the caret after the new text; a patch leaves the selection where the (moved) text puts it.
+        ed.executeEdits('civilkit-host', ops, caretAfter
+            ? (inverse) => { const r = inverse[0].range; return [new monaco.Selection(r.endLineNumber, r.endColumn, r.endLineNumber, r.endColumn)]; }
+            : undefined);
+        ed.pushUndoStop();
+    }
+    function insertText(raw: unknown): void {
+        const ed = activeEditor();
+        const model = ed?.getModel();
+        const sel = ed?.getSelection();
+        if (!ed || !model || !sel) { toHost({ type: 'civilkit-error', errors: ['insert: there is no open document'] }); return; }
+        const plan = planInsert(model.getValue(), model.getOffsetAt(sel.getStartPosition()), model.getOffsetAt(sel.getEndPosition()), raw);
+        if (!plan.ok) { toHost({ type: 'civilkit-error', errors: [plan.error] }); return; }
+        applyPlanned(ed, [plan.edit], true);
+        ed.focus();
+    }
+    function patchText(raw: unknown): void {
+        const ed = activeEditor();
+        const model = ed?.getModel();
+        if (!ed || !model) { toHost({ type: 'civilkit-error', errors: ['patch: there is no open document'] }); return; }
+        const plan = planPatch(model.getValue(), raw);
+        if (!plan.ok) { toHost({ type: 'civilkit-error', errors: [plan.error] }); return; }
+        applyPlanned(ed, plan.edits, false);
+        if (plan.errors.length) toHost({ type: 'civilkit-error', errors: plan.errors });
+    }
+
     fromHost((d) => {
         switch (d.type) {
+            case 'civilkit-insert':
+                insertText(d.text);
+                return;
+            case 'civilkit-patch':
+                patchText(d.edits);
+                return;
             case 'civilkit-load': {
                 const c = checkHostLoad(d as Parameters<typeof checkHostLoad>[0]);
                 if (!c.ok) { toHost({ type: 'civilkit-error', errors: [c.error] }); return; }
