@@ -4,6 +4,8 @@
 //                 civilkit-command {id}                                        run one of the `commands` of civilkit-ready (commands.ts)
 //                 civilkit-insert {text}                                       put text at the caret (own line), one undo step
 //                 civilkit-patch {edits:[{find, replace}]}                     exact one-match replacements, one undo step
+//                 civilkit-define {values, notes?}                             variables the host defines, before the document's own lines (define.ts)
+//                 civilkit-names {items:[{name, unit, detail}]}                names the editor's completion offers (hostvars.ts)
 //                 civilkit-get                                                 repeat the last civilkit-results
 //                 civilkit-get-source                                          send civilkit-source now (same revision)
 //   app to host:  civilkit-ready {caps, protocol}                              ONCE, when the app takes messages
@@ -18,7 +20,7 @@ import * as monaco from 'monaco-editor';
 import { buildApiSettings } from 'calcpad-frontend/types/settings';
 import type { TabManager } from '../tabs/tab-manager';
 import type { FileLibrary } from '../wasm/library';
-import { isSheetText } from '../wasm/sheet';
+import { compileSheet, isSheetText } from '../wasm/sheet';
 import { pythonBlocks, withoutPython } from '../embed/inputs';
 import { framed, fromHost, toHost } from './channel';
 import { COMMAND_IDS, runCommand } from './commands';
@@ -26,6 +28,8 @@ import { syncEditorTheme } from './monaco-tokens';
 import { onAppThemeChanged } from '../editor/app-theme';
 import { ribbonContext } from '../wasm/ribbon';
 import { planInsert, planPatch, type PlannedEdit } from './edits';
+import { buildPrelude, checkDefine, checkNames, documentDefinitions, vectorValue, type Prelude } from './define';
+import { decorate, followEdits, setHostDefined, setHostNames } from './hostvars';
 import { CAPS, PROTOCOL, TOKEN_MAP, checkHostLoad, checkTokens, isThemeMode, type HostLoad, type ThemeMode } from './protocol';
 
 export interface HostContext {
@@ -38,6 +42,8 @@ export interface HostContext {
     showPreview: () => void;
     /** The entered values of the #UI inputs, keyed by variable name, as the app's input form keeps them. */
     uiValues: { key: () => string; get: () => Record<string, string>; reset: (values: Record<string, string>) => void };
+    /** Calculates the preview and the editor's checks again (the host's defined variables changed; the document did not). */
+    recalc: () => void;
 }
 
 const SOURCE_DEBOUNCE_MS = 300;
@@ -85,6 +91,23 @@ export function installHost(ctx: HostContext): void {
         resultsTimer = window.setTimeout(() => { void postResults(); }, delay);
     }
 
+    type Problem = { line: number | null; severity: 'error' | 'warning'; message: string };
+
+    /** A sheet line that looks like a definition (`name: 5 kN`) but is read as text (a trailing `<!-- -->`, say): the name is not defined, and
+     *  the engine says nothing of it until something uses the name. */
+    async function lostDefinitions(content: string): Promise<Problem[]> {
+        if (!isSheetText(content)) return [];
+        const c = await compileSheet(content);
+        const lines = content.split('\n');
+        const out: Problem[] = [];
+        for (let i = 0; i < lines.length && out.length < 20; i++) {
+            if (c.kinds[i] !== 'p') continue;
+            const m = /^\s*([A-Za-z_\u00B0-\uFFFF][\w\u00B0-\uFFFF]*)\s*:\s*[-+]?[\d.]/.exec(lines[i]);
+            if (m) out.push({ line: i + 1, severity: 'warning', message: `This line is read as text, not as a definition, so ${m[1]} is not defined. Check it for a comment after the value (use "| note" for a note).` });
+        }
+        return out;
+    }
+
     async function postResults(): Promise<void> {
         const seq = ++resultsSeq;
         const content = text();
@@ -97,7 +120,7 @@ export function installHost(ctx: HostContext): void {
             uiOverrides: ctx.uiValues.get(), includeLineAnchors: true, hideErrorLines: true, write: false,
             sourceFilePath: `/${name}.${isSheetText(run) ? 'sheet' : 'cpd'}`,
         };
-        const problems: { line: number | null; severity: 'error'; message: string }[] = [];
+        const problems: Problem[] = [];
         try {
             const res = await fetch(api('convert'), { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(request) });
             if (res.ok) {
@@ -113,15 +136,74 @@ export function installHost(ctx: HostContext): void {
             }
             const vres = await fetch(api('values'), { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(request) });
             if (!vres.ok || seq !== resultsSeq) return;      // a newer edit has started another run
-            const { variables } = (await vres.json()) as { variables: { name: string; value: string; unit: string }[] };
-            const values: Record<string, { value: number | string; unit: string; text: string }> = {};
+            const { variables, vectors } = (await vres.json()) as { variables: { name: string; value: string; unit: string }[]; vectors?: { name: string; rows: string[][] }[] };
+            const vec = new Map((vectors ?? []).map((v) => [v.name, vectorValue(v.rows)]));
+            // The host's own variables: the document's definition of the same name wins (it comes later), with a warning that names it.
+            const own = prelude ? await documentDefinitions(run, isSheetText(run)) : new Map<string, number>();
+            const hostNames = new Set<string>();
+            if (prelude) {
+                for (const [n, cp] of prelude.calcpad) {
+                    const at = own.get(n) ?? own.get(cp);
+                    if (at) problems.push({ line: at, severity: 'warning', message: `${n} is defined here and by the host; the document's own value is used from this line on.` });
+                    else { hostNames.add(n); hostNames.add(cp); }
+                }
+            }
+            problems.push(...await lostDefinitions(run));
+            const values: Record<string, { value: number | string | unknown[]; unit: string; text: string; host?: true; vector?: true }> = {};
             for (const v of variables) {
+                const vv = vec.get(v.name);
+                if (vv) { values[v.name] = vv; if (hostNames.has(v.name)) values[v.name].host = true; continue; }
                 const n = Number(v.value);
                 values[v.name] = { value: v.value.trim() !== '' && Number.isFinite(n) ? n : v.value, unit: v.unit ?? '', text: `${v.value}${v.unit ? ' ' + v.unit : ''}` };
+                if (hostNames.has(v.name)) values[v.name].host = true;
             }
+            // The engine names a variable the way Calcpad writes it (a sheet's phiMs_M54 is φMs_M54): the host's own spelling is an alias of its value.
+            if (prelude) for (const [n, cp] of prelude.calcpad) if (cp !== n && values[cp]?.host && !values[n]) values[n] = values[cp];
             lastResults = { type: 'civilkit-results', name, values, errors: problems.slice(0, 50) };
             toHost(lastResults);
         } catch { /* the host gets no results for this run */ }
+    }
+
+    // ---- in: the host's variables (define.ts) and names (hostvars.ts) ---------------------------------------------------------
+    let prelude: Prelude | null = null;
+    let decorating = false;
+    const engine = () => (window as unknown as { calcpadEngine?: { setHostPrelude?: (p: Prelude | null) => void } }).calcpadEngine;
+    /** The first unit in a value (`-1.79 kN*m` is kN*m; of a vector, its first element's), for the editor's hover and completion detail. */
+    const unitOf = (value: string): string => /^\[?\s*[-+]?(?:\d+\.?\d*|\.\d+)(?:[eE][-+]?\d+)?\s*([^\s;,\]]*)/.exec(value)?.[1] ?? '';
+
+    /** The plain lines through the engine, without any earlier prelude: what it says of them, by line. */
+    async function engineCheck(plain: string): Promise<{ line: number | null; message: string }[]> {
+        const body = {
+            content: plain, settings: buildApiSettings(ctx.settings() as never), outputFormat: 'html', forPrint: false, theme: 'light', enableUi: false,
+            includeLineAnchors: true, hideErrorLines: true, write: false, sourceFilePath: '/define.cpd', noPrelude: true,   // anchors: the errors carry their line
+        };
+        const res = await fetch(api('convert'), { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
+        if (!res.ok) return [{ line: null, message: 'the values could not be calculated' }];
+        const errs = JSON.parse(decodeURIComponent(res.headers.get('X-Calcpad-Errors') ?? '%5B%5D')) as { sourceLine?: number; message?: string }[];
+        return errs.slice(0, 6000).map((e) => ({ line: typeof e.sourceLine === 'number' && e.sourceLine > 0 ? e.sourceLine : null, message: String(e.message ?? '').slice(0, 200) }));
+    }
+
+    function drawHostNames(): void {
+        const ed = activeEditor();
+        if (!ed) return;
+        if (!decorating) { decorating = true; followEdits(ed); }
+        decorate(ed);
+    }
+
+    let defining: Promise<void> = Promise.resolve();
+    async function define(d: { values?: unknown; notes?: unknown }): Promise<void> {
+        const c = checkDefine(d);
+        if (!c.ok) { toHost({ type: 'civilkit-error', errors: [c.error] }); return; }
+        const built = await buildPrelude(c.defines, engineCheck);
+        if (!built.ok) { toHost({ type: 'civilkit-error', errors: [built.error] }); return; }
+        prelude = built.prelude;
+        engine()?.setHostPrelude?.(prelude);
+        const shown = new Map<string, { unit: string; note: string }>();
+        for (const x of c.defines) shown.set(x.name, { unit: unitOf(x.value), note: c.notes[x.name] ?? '' });
+        setHostDefined(shown, activeEditor());
+        if (shown.size) drawHostNames();
+        ctx.recalc();          // the preview and the editor's checks: the document's text did not change, so nothing else would
+        scheduleResults(0);
     }
 
     // ---- in: a document -----------------------------------------------------------------------------------------------
@@ -147,6 +229,7 @@ export function installHost(ctx: HostContext): void {
             ctx.showPreview();
             const shown = nextRender();
             tabs().newUntitled(l.source, name);
+            if (prelude) queueMicrotask(drawHostNames);
             ctx.uiValues.reset(l.values);
             lastSent = text();
             await shown;
@@ -216,6 +299,17 @@ export function installHost(ctx: HostContext): void {
             case 'civilkit-patch':
                 patchText(d.edits);
                 return;
+            case 'civilkit-define':
+                defining = defining.then(() => define(d as { values?: unknown; notes?: unknown })).catch((err) => {
+                    toHost({ type: 'civilkit-error', errors: [`define failed: ${String(err instanceof Error ? err.message : err).slice(0, 200)}`] });
+                });
+                return;
+            case 'civilkit-names': {
+                const c = checkNames(d.items);
+                if (!c.ok) { toHost({ type: 'civilkit-error', errors: [c.error] }); return; }
+                setHostNames(c.items);
+                return;
+            }
             case 'civilkit-load': {
                 const c = checkHostLoad(d as Parameters<typeof checkHostLoad>[0]);
                 if (!c.ok) { toHost({ type: 'civilkit-error', errors: [c.error] }); return; }

@@ -2379,6 +2379,7 @@ async function bootstrap(): Promise<void> {
             bridge: activeBridge,
             setTheme: (mode) => setAppTheme(mode === 'light' ? 'Light' : mode === 'dark' ? 'Dark' : 'System'),
             showPreview: () => { if (!appInstance.isPreviewVisible()) appInstance.togglePreview?.(); },
+            recalc: () => { void refreshPreviewFor(activeGroup); for (const g of groups.values()) void g.diagnostics?.refresh(); },
             uiValues: {
                 key: () => activeUiDocKey(),
                 get: () => { syncUiOverrides(activeGroup, activeGroup.editor.getValue()); return uiOverrides.toRecord(activeUiDocKey()) ?? {}; },

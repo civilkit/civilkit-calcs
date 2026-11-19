@@ -332,8 +332,24 @@ class HighlighterWorker {
     }
 }
 
-/** A request body whose content is a sheet: the body with the compiled content, and the compile. */
-async function sheetBody(body: string | null, plainTex = false): Promise<{ body: string; sheet: SheetCompiled } | null> {
+/**
+ * Host mode's predefined variables (src/host/define.ts): Calcpad lines that go in front of every calculation of the document, hidden
+ * (`#hide` ... `#show`), so the host's values are known to every formula, to the editor's checks and to the exports, and are no part of the
+ * text. `lines` is how many lines they take: every line number the engine reports is moved back by that many, so errors and anchors still
+ * mean the document's own lines.
+ */
+export interface HostPrelude {
+    /** For a sheet: the names as the sheet compiler writes them (phiMs is φMs). */
+    text: string;
+    /** For a worksheet in plain Calcpad: the names as the host sent them; the same number of lines. */
+    plain?: string;
+    lines: number;
+}
+let hostPrelude: HostPrelude | null = null;
+export function setHostPrelude(p: HostPrelude | null): void { hostPrelude = p && p.lines > 0 ? p : null; }
+
+/** A request body whose content is a sheet: the body with the compiled content (behind the host's prelude, if any), and the compile. */
+async function sheetBody(body: string | null, plainTex = false, prelude = true): Promise<{ body: string; sheet: SheetCompiled } | null> {
     if (!body) return null;
     let req: Record<string, unknown>;
     try { req = JSON.parse(body) as Record<string, unknown>; } catch { return null; }
@@ -342,9 +358,33 @@ async function sheetBody(body: string | null, plainTex = false): Promise<{ body:
     if (!key || typeof req[key] !== 'string') return null;
     const content = req[key] as string;
     if (!isSheetRequest(content, path ? String(req[path] ?? '') : '')) return null;
-    const sheet = await compileSheet(content, plainTex);
-    req[key] = sheet.text;
+    let sheet = await compileSheet(content, plainTex);
+    const skip = req.noPrelude === true;
+    delete req.noPrelude;
+    if (prelude && hostPrelude && !skip) {
+        // The prelude's lines come from no sheet line (-1: sheetLine gives 0, which no reader takes for a line).
+        req[key] = `${hostPrelude.text}\n${sheet.text}`;
+        sheet = { ...sheet, map: [...new Array<number>(hostPrelude.lines).fill(-1), ...sheet.map] };
+    } else {
+        req[key] = sheet.text;
+    }
     return { body: JSON.stringify(req), sheet };
+}
+
+/** A worksheet (not a sheet) behind the host's prelude: the body, how many lines to take off the engine's line numbers, and the line map. */
+function plainBody(body: string): { body: string; shift: number; map: SheetCompiled | null } {
+    if (!hostPrelude && !body.includes('"noPrelude"')) return { body, shift: 0, map: null };
+    let req: Record<string, unknown>;
+    try { req = JSON.parse(body) as Record<string, unknown>; } catch { return { body, shift: 0, map: null }; }
+    const key = Object.keys(req).find(k => k.toLowerCase() === 'content');
+    if (req.noPrelude === true || !hostPrelude) { delete req.noPrelude; return { body: JSON.stringify(req), shift: 0, map: null }; }
+    if (!key || typeof req[key] !== 'string') return { body, shift: 0, map: null };
+    const text = `${hostPrelude.plain ?? hostPrelude.text}\n${req[key] as string}`;
+    req[key] = text;
+    // The engine's lines to the document's: the shape remapErrors and remapHtml take, with the prelude's lines on no line.
+    const total = text.split('\n').length;
+    const map = [...new Array<number>(hostPrelude.lines).fill(-1), ...Array.from({ length: total - hostPrelude.lines }, (_, i) => i)];
+    return { body: JSON.stringify(req), shift: hostPrelude.lines, map: { map } as unknown as SheetCompiled };
 }
 
 interface LintDiag { line: number; column: number; endColumn: number; severityId: number; code?: string; message: string }
@@ -360,6 +400,7 @@ function sheetLint(out: string, sheet: SheetCompiled, source: string): string {
         // Every quantity of a sheet is shown in the report, so "never used" says nothing here.
         if (/^Unused variable/.test(d.message)) continue;
         const line = (sheet.map[d.line] ?? d.line);
+        if (line < 0) continue;                  // a line of the host's prelude (setHostPrelude), not the sheet's
         const len = (lines[line] ?? '').replace(/\r$/, '').length;
         const m = { ...d, line, column: 0, endColumn: Math.max(1, len) };
         const key = `${line}|${d.message}`;
@@ -370,6 +411,13 @@ function sheetLint(out: string, sheet: SheetCompiled, source: string): string {
         mapped.push({ line: c.line, column: 0, endColumn: Math.max(1, len), severityId: c.severity === 'error' ? 0 : 1, code: 'SHEET', message: c.message });
     }
     return JSON.stringify({ diagnostics: mapped });
+}
+
+/** The engine's lint of a worksheet that has the host's prelude in front: the prelude's own markers dropped, the others moved back. */
+function shiftLint(out: string, shift: number): string {
+    let diags: LintDiag[] = [];
+    try { diags = (JSON.parse(out) as { diagnostics?: LintDiag[] }).diagnostics ?? []; } catch { return out; }
+    return JSON.stringify({ diagnostics: diags.filter(d => d.line >= shift).map(d => ({ ...d, line: d.line - shift })) });
 }
 
 function notAvailable(what: string, reason: string): Response {
@@ -395,6 +443,8 @@ export interface WasmTransport {
     resolveFile: ((path: string) => Uint8Array | undefined) | null;
     /** The open tab a render belongs to, for the once-per-tab Python question. */
     pythonScope: () => string;
+    /** Host mode's predefined variables: hidden lines in front of every calculation (see HostPrelude); null removes them. */
+    setHostPrelude: (p: HostPrelude | null) => void;
 }
 
 const IMAGE_TYPES: Record<string, string> = {
@@ -443,6 +493,7 @@ export function installWasmTransport(): WasmTransport {
         onFilesWritten: null,
         resolveFile: null,
         pythonScope: () => 'default',
+        setHostPrelude,
     };
     const python = new PythonRunner(base);
     (window as unknown as { calcpadPython: PythonRunner }).calcpadPython = python;
@@ -488,17 +539,24 @@ export function installWasmTransport(): WasmTransport {
         }
         if (endpoint in HIGHLIGHTER_METHODS && method === 'POST') {
             if (body == null || body === '') return new Response('Invalid JSON', { status: 400 });
-            const sh = await sheetBody(body);
-            if (sh && (endpoint === 'prettify' || endpoint === 'symbol-at-position' || endpoint === 'highlight')) {
+            const positional = endpoint === 'prettify' || endpoint === 'symbol-at-position' || endpoint === 'highlight';
+            const sh = await sheetBody(body, false, !positional);
+            if (sh && positional) {
                 // Positions in the compiled text mean nothing in the sheet.
                 return new Response(endpoint === 'highlight' ? '{"tokens":[]}' : '{}', { status: 200, headers: { 'Content-Type': 'application/json; charset=utf-8' } });
             }
-            let out = await highlighter.call(HIGHLIGHTER_METHODS[endpoint], sh ? sh.body : body, signal);
+            // A worksheet behind the host's prelude (lint and definitions only: the editor's checks know the host's names).
+            const pl = !sh && !positional ? plainBody(body) : null;
+            let out = await highlighter.call(HIGHLIGHTER_METHODS[endpoint], sh ? sh.body : pl ? pl.body : body, signal);
             if (sh && endpoint === 'lint') {
                 out = sheetLint(out, sh.sheet, (JSON.parse(body) as { content: string }).content);
             } else if (sh && endpoint === 'definitions') {
                 // Every zero based line number in the answer is an output line.
                 out = out.replace(/("(?:line|lineNumber|startLine|endLine)"\s*:\s*)(\d+)/g, (_m, a: string, n: string) => a + String(sheetLine(sh.sheet, Number(n) + 1) - 1));
+            } else if (pl && pl.shift && endpoint === 'lint') {
+                out = shiftLint(out, pl.shift);
+            } else if (pl && pl.shift && endpoint === 'definitions') {
+                out = out.replace(/("(?:line|lineNumber|startLine|endLine)"\s*:\s*)(\d+)/g, (_m, a: string, n: string) => a + String(Number(n) - pl.shift));
             }
             // Where the server answers a status, the module answers {"status": n, "error": "..."}.
             if (out.startsWith('{"status":')) {
@@ -513,8 +571,9 @@ export function installWasmTransport(): WasmTransport {
             if (body == null || body === '') return new Response('Invalid JSON', { status: 400 });
             await head;
             const unwrap = url.searchParams.get('unwrap') === 'true';
-            const sh = await sheetBody(body);
-            let engineBody = sh ? sh.body : body;
+            const sh = await sheetBody(body, false, !unwrap);      // the unwrapped listing is the document's, not the host's
+            const pl = !sh && !unwrap ? plainBody(body) : null;
+            let engineBody = sh ? sh.body : pl ? pl.body : body;
             const req0 = JSON.parse(engineBody) as Record<string, unknown>;
             const py = await preparePython(req0);
             if (py) engineBody = JSON.stringify(req0);
@@ -533,8 +592,11 @@ export function installWasmTransport(): WasmTransport {
                 out.errors = remapErrors((out.errors ?? []) as { sourceLine?: number }[], sh.sheet);
                 if (!unwrap) html = withSheetCss(remapHtml(html, sh.sheet));
                 if (hasTex(html)) html = await renderTex(html);
+            } else if (pl?.map) {
+                out.errors = remapErrors((out.errors ?? []) as { sourceLine?: number }[], pl.map);
+                html = remapHtml(html, pl.map);
             }
-            if (py) html = resolvePythonLines(html, n => (sh ? sheetLine(sh.sheet, n) : n));
+            if (py) html = resolvePythonLines(html, n => (sh ? sheetLine(sh.sheet, n) : pl?.map ? sheetLine(pl.map, n) : n));
             if (hasMermaid(html)) html = await renderMermaid(html);
             if (html.includes(UI_ASSETS_MARKER)) html = html.replace(UI_ASSETS_MARKER, await uiAssetsMarkup(base));
             if (transport.resolveFile) html = libraryImages(html, transport.resolveFile);
@@ -562,7 +624,7 @@ export function installWasmTransport(): WasmTransport {
             if (body == null || body === '') return new Response('Invalid JSON', { status: 400 });
             await head;
             const shE = await sheetBody(body, true);
-            const request = JSON.parse(shE?.body ?? body) as Record<string, unknown>;
+            const request = JSON.parse(shE?.body ?? plainBody(body).body) as Record<string, unknown>;
             const pyE = await preparePython(request);
             request.captureOpenXml = true;
             request.enableUi = false;
@@ -594,20 +656,22 @@ export function installWasmTransport(): WasmTransport {
             if (body == null || body === '') return new Response('Invalid JSON', { status: 400 });
             await head;
             const shV = await sheetBody(body);
-            const request = JSON.parse(shV?.body ?? body) as Record<string, unknown>;
+            const request = JSON.parse(shV?.body ?? plainBody(body).body) as Record<string, unknown>;
             request.exportXlsx = true;
             request.enableUi = false;
             request.includeLineAnchors = false;
             request.write = false;
             const out = JSON.parse(await engine.convert(JSON.stringify(request), false, signal)) as {
-                status?: number; error?: string; xlsxSheets?: { name: string; rows: string[][] }[];
+                status?: number; error?: string; xlsxSheets?: { name: string; variable?: string | null; rows: string[][] }[];
             };
             if (out.status) return new Response(out.error ?? '', { status: out.status });
             const sheets = out.xlsxSheets ?? [];
             const inputs = new Set((sheets.find(x => x.name === 'Inputs')?.rows ?? []).slice(1).map(r => r[0]));
             const variables = (sheets.find(x => x.name === 'Variables')?.rows ?? []).slice(1)
                 .map(r => ({ name: r[0], value: r[1], unit: r[2] ?? '', input: inputs.has(r[0]) }));
-            return Response.json({ variables });
+            // A vector or matrix: its elements (the engine's own sheet of them: one row per element, each with its unit).
+            const vectors = sheets.filter(x => typeof x.variable === 'string').map(x => ({ name: x.variable as string, rows: x.rows }));
+            return Response.json({ variables, vectors });
         }
         if (endpoint === 'xlsx' && method === 'POST') {
             // calcpad-rs's own export (DEVIATIONS D7): the worksheet as a "Report" sheet with its
@@ -616,7 +680,7 @@ export function installWasmTransport(): WasmTransport {
             if (body == null || body === '') return new Response('Invalid JSON', { status: 400 });
             await head;
             const shE = await sheetBody(body, true);
-            const request = JSON.parse(shE?.body ?? body) as Record<string, unknown>;
+            const request = JSON.parse(shE?.body ?? plainBody(body).body) as Record<string, unknown>;
             const pyE = await preparePython(request);
             request.exportXlsx = true;
             request.enableUi = false;

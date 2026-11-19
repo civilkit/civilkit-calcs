@@ -1435,3 +1435,10 @@ html[data-host] .tab-split,
 html[data-host] .group-close,
 html[data-host] .tab-close { display: none !important; }
 html[data-host] .tab { cursor: default; }
+
+/* Host mode: a name the host defines (civilkit-define) is drawn apart from the ones typed into the sheet (host/hostvars.ts). */
+.monaco-editor .ck-host-var {
+  color: var(--ck-accent) !important;
+  text-decoration: underline dotted;
+  text-underline-offset: 3px;
+}
