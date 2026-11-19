@@ -193,8 +193,8 @@ frame"); this section records how it is built.
   (`moments: Mz_selected`) and the host's vector show the new unit afterwards (values are unchanged: units are carried). **Empty:** `[]` is not a vector: a sheet line `v: []`
   is read as text and `civilkit-define` refuses it. `for i in 1..0:` is NOT zero passes: it counts down (i = 1, then 0); guard with `if n > 0:`. A loop or a mention of
   an undefined name inside a branch that is not taken is silent, so a template is written `if n_selected > 0:` around its loops and the host defines only the count (0)
-  for an empty scope. Timing (headless Chromium, this machine, define to results): a vector of 3 elements 0.8 s, of 2000 elements (19 KB) 1.5 s, of 5000 (48 KB) 1.9 s, each with a sum, a max, a
-  loop and an index; a loop of 300 passes with two quantity lines over 300-element vectors 2.2 s.
+  for an empty scope. Timing (headless Chromium, this machine, define to results): a vector of 3 elements 0.8 s, of 2000 elements (19 KB) 1.2 to 1.5 s, of 5000 (48 KB) 1.9 to 2.2 s, each with a sum, a max, a
+  loop and an index; a loop of 300 passes with two quantity lines over 300-element vectors 2.2 s alone and 5.9 s while other checks were running on the same machine.
 
 ## Landing pages and the catalogue
 
