@@ -143,13 +143,24 @@ frame"); this section records how it is built.
   None opens, saves or lists files. Each may declare why it cannot run now (no editor, not a sheet, no samples browser), which answers
   `civilkit-error`, as does an unknown id. `civilkit-ready` carries `commands` (the exact list) and `caps` has `command`. The Samples browser's
   Open never asked "replace your sheet?" (it calls `newUntitled`, which replaces the one tab in host mode); a test asserts there is no question.
+* **Edits by the host.** `civilkit-insert {text}` and `civilkit-patch {edits:[{find, replace}]}` (`host/edits.ts`, pure planning; `host.ts` applies the plan to
+  the active Monaco editor, `window.calcpadActiveEditor`). Each is one `executeEdits` between two `pushUndoStop` calls, so it is one Ctrl+Z; neither uses
+  `setValue`, so the undo stack and the caret survive (a patch passes no cursor-state computer, so Monaco moves the selection with the text; an insert puts the
+  caret after the new text). They are not `applying` edits: the normal `onTabContentChanged` path sends the `civilkit-source` that follows, at the next revision.
+  Insert: a caret mid-line gets `\n` first, the text always ends with `\n`, `\r\n` becomes `\n` (Monaco converts to the model's own). Patch: every `find` must occur once
+  in the text as it is when the message arrives (`String.indexOf` counting overlapping occurrences); edits are taken in message order and a match overlapping an
+  earlier planned one is refused; refused edits do not stop the others (partial apply) and come back in one `civilkit-error`. Limits: 100,000 characters per text,
+  500 edits, 1,000,000 characters in all (`MAX_*` in `edits.ts`). `caps` has `insert` and `patch`.
+* **Comments in sheet text (tested 2026-11-19, host-check sandbox).** A trailing `// note` after a definition leaves the variable undefined (`//` reads as division),
+  a trailing `<!-- ... -->` does too, and neither puts anything in `civilkit-results.errors`; an HTML comment on its own line did not break the definitions
+  after it. The supported note is `name: value | note` (docs/sheet-syntax.md). The book chapter tells hosts to keep their markers out of the sheet text.
 * **Update notice.** `update-notice.ts` posts `civilkit-update-available` in host mode instead of showing its Reload button.
 * **Theme.** `civilkit-theme` calls `setAppTheme` (not the bridge's `updateColorTheme`), so the host's choice is never saved over the
   user's own preference. Tokens are inline custom properties on `<html>` (`host/protocol.ts` `TOKEN_MAP`); the dialogs read `--vscode-*` which are
   `--ck-*`, so they follow. Monaco cannot read CSS variables: `host/monaco-tokens.ts` defines a `civilkit-host` theme from the computed values on top of the light
   or dark one (surface, text, line numbers, cursor, selection, widgets) whenever tokens are applied or the app's theme changes, and selects it; no tokens
   gives the app's own theme back. The syntax colours stay the app's.
-* **Tests.** `web/e2e/host-check.mjs` (own ports; never 5101).
+* **Tests.** `web/e2e/host-check.mjs` (own ports; never 5101), including section 6c for insert and patch.
 
 ## Landing pages and the catalogue
 
