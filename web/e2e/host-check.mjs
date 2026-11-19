@@ -648,6 +648,36 @@ check((await prop('--ck-panel')) === '#14171d' && (await prop('--ck-accent-soft'
     await app().evaluate(() => window.calcpadActiveEditor.trigger('test', 'hideSuggestWidget', {}));
     await send({ type: 'civilkit-names', items: [] });
 
+    // lint and the names list: a listed name is not called undefined by the editor's checks (a template for any selection mentions names the model has
+    // no value for right now); the results are not changed, and a name that is neither defined nor listed keeps its squiggle
+    const TPL = '<!--sheet-->\nn_selected: 0\nif n_selected > 0:\n    M: sum(Mz_selected)\n    P: phiMs_selected.1 * 2\n';
+    await loadDoc(TPL, 80);
+    const unlisted = await until(squiggles, (n) => n > 0, 60);
+    check(unlisted > 0, `a name that is neither defined nor listed has its squiggle in the untaken branch (${unlisted})`);
+    await send({ type: 'civilkit-names', items: [{ name: 'Mz_selected', unit: 'kN*m', detail: 'selected members' }, { name: 'phiMs_selected', unit: 'kN*m', detail: 'capacity' }] });
+    const listed = await until(squiggles, (n) => n === 0, 60);
+    check(listed === 0, `listed in civilkit-names (also phi names, Calcpad spells them with the Greek letter), the squiggles are gone (${listed})`);
+    await settle(1500);
+    res = await lastRes(0);
+    check((res?.errors ?? []).every((e) => !/Undefined variable/.test(e.message)), `the untaken branch has no error in the results either (${JSON.stringify(res?.errors)})`);
+    // a name of another kind, not listed, still has its squiggle while the listed ones are quiet
+    await loadDoc(TPL + 'W: other_unlisted + 1\n', 81);
+    const stillOne = await until(squiggles, (n) => n > 0, 60);
+    check(stillOne > 0, `an unlisted undefined name keeps its squiggle while the listed names are known (${stillOne})`);
+    // the results do not know the names: an evaluated use of a listed, undefined name is still an error with its line
+    await loadDoc('<!--sheet-->\nn_selected: 0\nQ: Mz_selected * 2\n', 82);
+    await settle(1200);
+    res = await lastRes(0);
+    check(hasErr(res, /Undefined variable/, 3), `an evaluated use of a listed but undefined name is still an error in the results (${JSON.stringify((res?.errors ?? []).map((e) => [e.line, e.message.slice(0, 40)]))})`);
+    // a plain worksheet: the same
+    await loadDoc('n = 0\n#if n > 0\nM = sum(Mz_selected)\n#end if\n', 83);
+    const plainListed = await until(squiggles, (n) => n === 0, 60);
+    check(plainListed === 0, `a plain worksheet: the listed name is not flagged either (${plainListed})`);
+    // clearing the list brings the squiggle back
+    await send({ type: 'civilkit-names', items: [] });
+    const back = await until(squiggles, (n) => n > 0, 60);
+    check(back > 0, `an empty names list brings the squiggle back (${back})`);
+
     // lost variables: a line read as text, or one that fails, is reported with its line
     await loadDoc('<!--sheet-->\na1: 245.3 kN*m   // x\nb: a1*2\n', 70);
     await define({});
