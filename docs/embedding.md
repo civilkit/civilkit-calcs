@@ -136,10 +136,19 @@ frame"); this section records how it is built.
   the load adopts the host's `revision` and each source is one more. Results are one convert with line anchors and one values call
   (about 0.6 s after the last edit), independent of whether the results pane is showing; a sheet with Python blocks is run without
   them, so a Python consent question is never raised for the host's results.
+* **Commands.** `civilkit-command {id}` (`host/commands.ts`) runs one of the ribbon's own actions (`wasm/ribbon-actions.ts` `runAction`) through
+  the ribbon's context (`wasm/ribbon.ts` `ribbonContext()`), so a host menu item and the ribbon button are the same code. The ids are an
+  allow-list (`COMMANDS`; `hasOwnProperty`, so `constructor` is unknown): `samples`, `export`, `word`, `excel`, `pdf`, `showcompiled`, `symbolic`, `find`,
+  `undo`, `redo`, `calculate`, `settings`, `insert`, `variables`, `errors`, `contents`, `format`, `preview`, `unwrapped`, `inputform`, `report`, `shortcuts`.
+  None opens, saves or lists files. Each may declare why it cannot run now (no editor, not a sheet, no samples browser), which answers
+  `civilkit-error`, as does an unknown id. `civilkit-ready` carries `commands` (the exact list) and `caps` has `command`. The Samples browser's
+  Open never asked "replace your sheet?" (it calls `newUntitled`, which replaces the one tab in host mode); a test asserts there is no question.
 * **Update notice.** `update-notice.ts` posts `civilkit-update-available` in host mode instead of showing its Reload button.
 * **Theme.** `civilkit-theme` calls `setAppTheme` (not the bridge's `updateColorTheme`), so the host's choice is never saved over the
-  user's own preference. Tokens are inline custom properties on `<html>` (`host/protocol.ts` `TOKEN_MAP`); the editor's colours come from its
-  own Monaco theme and follow only light or dark: a gap if Studio's palette must reach the editor.
+  user's own preference. Tokens are inline custom properties on `<html>` (`host/protocol.ts` `TOKEN_MAP`); the dialogs read `--vscode-*` which are
+  `--ck-*`, so they follow. Monaco cannot read CSS variables: `host/monaco-tokens.ts` defines a `civilkit-host` theme from the computed values on top of the light
+  or dark one (surface, text, line numbers, cursor, selection, widgets) whenever tokens are applied or the app's theme changes, and selects it; no tokens
+  gives the app's own theme back. The syntax colours stay the app's.
 * **Tests.** `web/e2e/host-check.mjs` (own ports; never 5101).
 
 ## Landing pages and the catalogue
