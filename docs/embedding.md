@@ -162,6 +162,40 @@ frame"); this section records how it is built.
   gives the app's own theme back. The syntax colours stay the app's.
 * **Tests.** `web/e2e/host-check.mjs` (own ports; never 5101), including section 6c for insert and patch.
 
+* **Variables the host defines.** `civilkit-define {values, notes?}` (`host/define.ts` checks and builds, `host.ts` handles; the transport applies, `setHostPrelude`
+  in `wasm/transport.ts`). `values` maps a name to a string `"number [unit]"` or a vector `"[a; b; c]"` (`,` also separates; each element a number with an optional unit),
+  exactly what a sheet line `name: value` takes; 2000 names, 65,536 characters of values and notes, 5000 elements a vector. The names are sheet names (letters,
+  digits, underscore, up to 60) and may not be a unit, function or constant of Calcpad (checked by asking the engine, in a fresh calculation, for each name). The values are
+  compiled with the sheet compiler (`phi` is `φ`, as in the sheet) and the engine runs them once before they are accepted; a bad name or value refuses the whole
+  message with `civilkit-error` naming it, and nothing changes. **How they act:** a hidden prelude, `#hide` ... `#show`, one line per define, goes in front of the compiled
+  sheet (or of the plain worksheet, with the names as sent) in every engine call that calculates the document: the preview, the results, the values, the Word, Excel and PDF
+  exports and the editor's lint (`sheetBody` / `plainBody` in `transport.ts`), but not the "unwrapped" listing or the highlighter. The prelude is no part of the text: it
+  is never in the editor, never in a `civilkit-source`, and the undo stack is untouched. **Line numbers:** the prelude's lines are put on no line (sheet: `-1` entries in the
+  compiler's line map, so `sheetLine` gives 0; worksheet: a map that skips them), so error lines, anchors, the lint markers and `civilkit-results.errors[].line` are the
+  document's own lines. A define replaces the whole set; an empty or absent `values` clears it; the editor's preview and checks run again and a `civilkit-results` follows.
+  **Precedence:** the document's own definition of a name wins (it comes after the prelude); the results then carry `{severity: 'warning'}` on the document's line, naming the
+  name, and the value is no longer marked `host`. **In the results:** each host variable is in `values` marked `host: true`; the key is the name as Calcpad writes it
+  (`φMs_M54` for `phiMs_M54` in a sheet) and the host's own spelling is added as an alias. A vector is `{value: [{value, unit}, ...], unit, text, vector: true}`
+  (`unit` the one the elements share, else ""; the numbers come from the engine's own sheet of the vector, `values` endpoint `vectors`); `value` of every other variable is as before.
+  A matrix is not given element by element (its `text` is the engine's own). **`notes`:** `{name: text}`; the name is drawn in the accent colour in the editor
+  (`.ck-host-var`, `host/hostvars.ts`) with the note as the hover. There is no badge in the results page: the note is not printed there (not done).
+* **Names for the editor.** `civilkit-names {items:[{name, unit, detail}]}` (up to 5000, replaces the list, empty clears) feeds a completion provider (`hostvars.ts`, languages
+  `calcpad` and `calcpad-sheet`): a name matching what is typed is offered with its unit and detail, the host's names first. A name that is only in this list and is not
+  defined stays an ordinary undefined-variable error when a formula uses it; define it with `civilkit-define` to make it known.
+* **Lost variables.** The engine reports a failed line (a trailing `// note`: `Invalid syntax: "/ /"`) and every use of the name it lost (`Undefined variable or units`),
+  both with their line, and `civilkit-results.errors` carries them (tested). A line that looks like a definition but is read as text (a trailing `<!-- -->`) is reported
+  by the host layer as a warning on its line (`lostDefinitions`: the sheet compiler's line kinds say `p`, prose, for a line that starts `name: <number>`), because the
+  engine says nothing of it until the name is used.
+* **Vectors, as the engine does them** (all tested in `host-check.mjs`): `len(v)` is the count, a plain number that works as a loop bound (`count(v)` is another function: it
+  takes more arguments); `max`, `min`, `sum` and `abs` work on vectors of quantities and keep the unit; elements in two units of one dimension are converted
+  (`[1 kN*m; 2000 N*m]`); a unitless element among quantities is an `Inconsistent units` error at the line that uses it; `v.i` with a loop index and `for x in v:` run over a
+  defined vector; `v.5` past the end is `Index out of range: 5.` at its line; `v -> kN*m` is a vector, and it converts the vector itself in place, so an alias
+  (`moments: Mz_selected`) and the host's vector show the new unit afterwards (values are unchanged: units are carried). **Empty:** `[]` is not a vector: a sheet line `v: []`
+  is read as text and `civilkit-define` refuses it. `for i in 1..0:` is NOT zero passes: it counts down (i = 1, then 0); guard with `if n > 0:`. A loop or a mention of
+  an undefined name inside a branch that is not taken is silent, so a template is written `if n_selected > 0:` around its loops and the host defines only the count (0)
+  for an empty scope. Timing (headless Chromium, this machine, define to results): a vector of 3 elements 0.8 s, of 2000 elements (19 KB) 1.5 s, of 5000 (48 KB) 1.9 s, each with a sum, a max, a
+  loop and an index; a loop of 300 passes with two quantity lines over 300-element vectors 2.2 s.
+
 ## Landing pages and the catalogue
 
 `tools/learn/render.mjs` adds a "Try it" section (a lazy iframe with a fixed height of 560 px, so nothing shifts, and an
