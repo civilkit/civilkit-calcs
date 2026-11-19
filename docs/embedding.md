@@ -180,8 +180,11 @@ frame"); this section records how it is built.
   A matrix is not given element by element (its `text` is the engine's own). **`notes`:** `{name: text}`; the name is drawn in the accent colour in the editor
   (`.ck-host-var`, `host/hostvars.ts`) with the note as the hover. There is no badge in the results page: the note is not printed there (not done).
 * **Names for the editor.** `civilkit-names {items:[{name, unit, detail}]}` (up to 5000, replaces the list, empty clears) feeds a completion provider (`hostvars.ts`, languages
-  `calcpad` and `calcpad-sheet`): a name matching what is typed is offered with its unit and detail, the host's names first. A name that is only in this list and is not
-  defined stays an ordinary undefined-variable error when a formula uses it; define it with `civilkit-define` to make it known.
+  `calcpad` and `calcpad-sheet`): a name matching what is typed is offered with its unit and detail, the host's names first. The editor's own checks (the lint: the red marks
+  and the error count) treat every listed name as known, in the host's spelling and in Calcpad's (`phi` is `φ`), whether or not it is defined right now, so a template for any
+  selection (`if n_selected > 0:` around `sum(Mz_selected)`) shows no permanent error (`withoutKnownNames` in `wasm/transport.ts`, lint only). The results do not know the names: a name
+  that is only in this list and is not defined stays an ordinary undefined-variable error in `civilkit-results.errors` when a formula evaluates it; define it with
+  `civilkit-define` to give it a value.
 * **Lost variables.** The engine reports a failed line (a trailing `// note`: `Invalid syntax: "/ /"`) and every use of the name it lost (`Undefined variable or units`),
   both with their line, and `civilkit-results.errors` carries them (tested). A line that looks like a definition but is read as text (a trailing `<!-- -->`) is reported
   by the host layer as a warning on its line (`lostDefinitions`: the sheet compiler's line kinds say `p`, prose, for a line that starts `name: <number>`), because the
